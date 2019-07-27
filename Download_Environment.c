@@ -1,20 +1,7 @@
-// Server side implementation of UDP client-server model : DOWNLOAD ENVIRONMENT
-
-#define _POSIX_SOURCE
-#include <stdio.h> 
-#include <pthread.h>
-#include <stdlib.h> 
-#include <unistd.h> 
-#include <string.h> 
-#include <sys/signal.h>
-#include <sys/types.h> 
-#include <sys/socket.h> 
-#include <arpa/inet.h> 
-#include <netinet/in.h> 
-#include "support.c"
+/* Server side implementation of RUFT : DOWNLOAD ENVIRONMENT */
+#include "header.h"
 #include "Reliable_Data_Transfer.c"
-
-#define _POSIX_SOURCE
+#include "time_toolbox.c"
 
 #define MAX_WORKERS     5
 
@@ -28,6 +15,8 @@ struct block;
     As a worker thread serves a request, it goes on pause, waiting for a signal (SIGUSR1) to be awaked. 
 */
 typedef struct worker_{
+
+    pthread_t               time_wizard;                                //Thread Identifier of this worker's Time_Wizard (who handles timeout-retransmission).
 
     int                     identifier;                                 //Unique identifier of the worker of a block, to receive ACKs.
 
@@ -67,7 +56,7 @@ typedef struct block_ {
 
     worker                  *workers;                                   //Array of block's workers. 
 
-    pthread_t               ack_dmplx_thread;                            //Acknowledgments demultiplexer thread's TID.
+    pthread_t               ack_dmplx_thread;                           //Acknowledgments demultiplexer thread's TID.
 
     struct block_           *next;                                      //Pointer to next block structure.
 
@@ -77,12 +66,16 @@ typedef struct block_ {
 }               block;                                                  extern      block        *download_environment;
 
 
+
         /*  THREADS' FUNCTIONS DECLARATION */
 
 void * work( void* _worker );
 
 
 void * acknowledgment_demultiplexer( void * _block );
+
+
+void * time_wizard( void * _worker);
 
 
 
@@ -174,6 +167,12 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in clie
 
     for ( int i = 0; i < MAX_WORKERS; i ++ ) {
 
+        ret = pthread_create( &( tmp -> time_wizard ), NULL, work, (void *) tmp );
+        if ( ret == -1 ) {
+            printf("Error in function: pthread_create (init_new_block).");
+            return -1;
+        }
+
         ret = pthread_create( &( tmp -> tid ), NULL, work, (void *) tmp );
         if ( ret == -1 ) {
             printf("Error in function: pthread_create (init_new_block).");
@@ -195,7 +194,7 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in clie
 
 
 /*  
-    This function is tipically called by the Reception Environment of RUFT Server.
+    This function is tipically called by the RECEPTION ENVIRONMENT of RUFT Server.
     By this function, server reception delegates download environment sending to client_address the file specified in pathname.
     Download Environment's blocks are checked to find the one matched to that file, if already exists: 
     in that case, a paused thread of the block is awaken by SIGUSR1 event ( function pthread_kill ).
@@ -273,9 +272,10 @@ int start_download( char *pathname , struct sockaddr_in client_address ) {
 
         /*  EVENT HANDLERS DECLARATION : SIGUSR1 & SIGUSR2 */
 
-void wake_up();
+void wake_up(){}                                                                              //SIGUSR1 handler. 
 
-void incoming_ack();
+void incoming_ack(){}                                                                         //SIGUSR2 handler.
+
 
 
 
@@ -323,10 +323,10 @@ void * work ( void * _worker ) {
 
 
 /*  
-    This is the block's acknowledgment keeper thread function.
+    This is the block's acknowledgment keeper (and demultiplexer) thread function.
     By this function, this thread receives block's client's acknowledgments and executes demultiplexing of them: 
     each ACK is directed to a specific block's worker, and further to a specific slot of its sliding window.
-    This thread is responsible for notifying workers about the received ACKs and for awakening a worker waiting sliding his window.
+    This thread is responsible for notifying workers about the received ACKs and for awakening a worker waiting for sliding his window on.
 */
 void * acknowledgment_demultiplexer( void * _block ){
 
@@ -385,11 +385,13 @@ void * acknowledgment_demultiplexer( void * _block ){
 
 
         /*  Update worker window's slot's status from SENT to ACKED. 
-            If the slot is the first of the sliding window, forward a SIGUSR2 signal to worker-thread to get the window sliding. */
+            If the slot is the first of the sliding window, forward a SIGUSR2 signal to worker-thread to get the window sliding on. */
 
         if ( ( sw_tmp -> status ) != SENT )     Error_("Error in acknowledgment handling : unexpected window's status.", 1);
 
         sw_tmp -> status = ACKED;
+
+        current_timestamp( sw_tmp -> acked_timestamp );
 
         if ( ( sw_tmp -> is_first ) == '1' )    pthread_kill( ( w_tmp -> tid ), SIGUSR2 );          
 
@@ -397,3 +399,57 @@ void * acknowledgment_demultiplexer( void * _block ){
     } while (1);
 
 }
+
+
+
+
+/*
+    This is the thread function of the time_wizard related to a worker.
+    This function implements the retransmission of packets lost within the network, during a worker's file transfer to a client.
+    In this function, the thread executes a while(1) loop : for a time equal to the nanoseconds specified in global extern variable "beat", this thread sleeps.
+    Every time the thread awakes, it accesses to the worker's sliding window and check the timeout interval on beeing run out :
+    If this condition is verified, then the thread executes a retransmission of the specific window slot's packet to the client.
+    The sliding window is of course accessed on all of its slots.
+*/
+void * time_wizard( void * _worker ){
+
+    int                 ret;
+
+    worker              *wrkr = ( worker *) _worker;
+
+    sw_slot             *window = wrkr -> sliding_window_slot_;
+
+    struct timespec     *now;
+
+    do {
+
+        ret = nanosleep( &beat, NULL );
+        if (ret == -1)      Error_( "Error in function : nanosleep() (time_wizard).", 1);
+
+        current_timestamp( now );
+
+        for (int i = 0; i < WINDOW_SIZE; i ++ ) {
+
+            if ( ( window -> sent_timestamp ) -> tv_sec != 0  &&  ( window -> sent_timestamp ) -> tv_nsec != 0 ) {
+                
+                if ( nanodifftime( now, window -> sent_timestamp )  >= ( window -> timeout_interval ) ){
+
+                    if ( retransmission( window, wrkr -> sockfd, &(wrkr -> client_addr) ) == -1 )     Error("Error in function: retransmission (time_wizard).", 1);
+
+                }
+
+            }
+
+            window = ( window -> next );
+
+        }
+
+    } while(1);
+
+}
+ 
+
+
+
+
+

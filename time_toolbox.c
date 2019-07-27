@@ -1,12 +1,9 @@
-#define _POSIX_C_SOURCE 199309L
-#include <stdio.h> 
-#include <time.h>
 
+#pragma once
+#include "header.h"
 
-extern struct timespec     beat = { 0, 70000000 };
-
-extern const long          TIMEOUT_INTERVAL = 1000000000;
-
+struct timespec         beat = { 0, 70000000 };
+long                    TIMEOUT_INTERVAL = (long) 1000000000;
 
 
 int current_timestamp(struct timespec* time) {

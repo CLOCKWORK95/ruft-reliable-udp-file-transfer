@@ -1,18 +1,8 @@
-// Client side implementation of UDP client-server model 
-#define _POSIX_SOURCE
-#include <stdio.h> 
-#include <stdlib.h> 
-#include <unistd.h> 
-#include <string.h> 
-#include <sys/types.h> 
-#include <sys/socket.h> 
-#include <arpa/inet.h> 
-#include <netinet/in.h> 
-#include "support.c"
+/* Client side implementation of RUFT  */ 
+#include "header.h"
 #include "Reliable_Data_Transfer.c"
-  
+
 #define PORT     8080 
-#define MAXLINE 1024 
 
 int                     sockfd; 
 char                    buffer[MAXLINE],        msg[MAXLINE]; 
@@ -20,6 +10,21 @@ struct sockaddr_in      servaddr;
 
 
 
+
+
+/* CLIENT AVAILABLE REQUESTS DECLARATION */
+
+int list_request();
+
+int download_request();
+
+int upload_request();
+
+
+
+
+
+/* This is the Client's GUI to communicate with RUFT Server size. */
 void display() {
 
     printf("\e[1;1H\e[2J");
@@ -36,10 +41,15 @@ void display() {
     printf("|   OP   2 :    put.                                                                |\n");
 	printf("|____ ________ ________ ________ ________ ________ ________ ________ ________ ______|\n\n");
 
+    printf(" Please, write the operation code : ");
+
 
 }
 
   
+
+
+
 
 int main(int argc, char** argv) { 
 
@@ -65,8 +75,6 @@ ops:
 
     display();
 
-    printf("\n\nplease write the op code : ");
-
     ret = scanf( "%d", &op);
     if (ret == -1)      Error_("error in function : scanf.", 1);
     while (getchar() != '\n') {}
@@ -74,42 +82,31 @@ ops:
     switch(op) {
 
         case 0:
+            /* LIST */
+            list_request();
+            printf("\n\nPress a button to proceed...");
+
+            char c;
+            scanf("%c", &c);
+            while( getchar() != '\n'){};
             break;
 
         case 1:
+            /* GET */
+
             break;
 
         case 2:
+            /* PUT */
+
             break;
 
         default:
-
-            memset(msg, 0, strlen(msg));
-            printf("please write a message: ");
-
-            ret = scanf("%s", msg);
-            if (ret == -1)      Error_("error in function : scanf.", 1);
-            while (getchar() != '\n') {}
-
-            // Sending hello msg.
-            sendto(sockfd, (const char *) msg, strlen(msg), MSG_CONFIRM, (const struct sockaddr *) &servaddr,  sizeof(servaddr)); 
-            printf("message sent.\n"); 
-
-            // Receiving aswer.
-            n = recvfrom(sockfd, (char *)buffer, MAXLINE,  MSG_WAITALL, (struct sockaddr *) &servaddr, &len); 
-
-            buffer[n] = '\0';
-            printf("Server : %s.        (press a button to proceed...)\n", buffer); 
-
-            char end[1];
-            scanf("%s", end);
-
             break;
 
     }
 
     goto ops;
-    
     
   
     close(sockfd); 
@@ -117,3 +114,100 @@ ops:
     return 0; 
 
 } 
+
+
+
+int list_request() {
+
+    int     ret,    len;
+
+    char    request[3],     answer[MAXLINE],     *list;
+
+    sprintf( request, "0/");
+
+    // Sending list request
+    ret = sendto(sockfd, (const char *) request, strlen(request), MSG_CONFIRM, (const struct sockaddr *) &servaddr,  sizeof(servaddr)); 
+    if (ret <= 0) {
+        printf("Error in function : sendto (list_request).");
+        return -1;
+    }
+
+    // Receiving confirm and size of the list.
+    ret = recvfrom( sockfd, (char *) buffer, MAXLINE,  MSG_WAITALL, (struct sockaddr *) &servaddr, &len ); 
+    if (ret <= 0) {
+        printf("Error in function : recvfrom (list_request).");
+        return -1;
+    }
+
+    ret = atoi(buffer);         list = malloc( sizeof(char) * ret );
+
+
+    // Receiving the list.
+    ret = recvfrom( sockfd, (char *) list, MAXLINE,  MSG_WAITALL, (struct sockaddr *) &servaddr, &len ); 
+    if (ret <= 0) {
+        printf("Error in function : recvfrom (list_request).");
+        return -1;
+    }
+
+    printf( "\nSERVER DIRECTORY CONTENTS ARE :\n\n%s\n\n", list );
+
+    free( list );
+
+    return 0;
+    
+}
+
+
+
+
+int download_request() {
+
+    int                     ret,            len,            dwld_serv_len;
+
+    struct sockaddr_in      dwld_servaddr;       
+
+    char                    request[MAXLINE],       pathname[MAXLINE],        *filename;
+
+    /* Set the request packet's fields. */
+
+    sprintf( request, "1/");
+
+    printf("Enter the file name here : ");
+
+    scanf( "%s", filename );
+
+    sprintf( ( request + strlen( request ) ), "./server_directory/%s", filename );
+
+    sprintf( pathname, "./client_directory/%s", filename );
+
+
+    // Create the new file in client's directory and open a writing session on it.
+    int fd = open( pathname, O_WRONLY | O_CREAT | O_TRUNC );
+
+
+    // Sending download request.
+    ret = sendto(sockfd, (const char *) request, strlen(request), MSG_CONFIRM, (const struct sockaddr *) &servaddr,  sizeof(servaddr)); 
+    if (ret <= 0) {
+        printf("Error in function : sendto (download_request).");
+        return -1;
+    }
+
+    // Download File.
+    do{
+
+        ret = recvfrom( sockfd, (char *) buffer, MAXLINE,  MSG_WAITALL, (struct sockaddr *) &dwld_servaddr, &dwld_serv_len ); 
+        if (ret <= 0) {
+            printf("Error in function : recvfrom (list_request).");
+            return -1;
+        }
+
+        
+
+
+
+    } while(1);
+
+
+    return 0;
+    
+}
