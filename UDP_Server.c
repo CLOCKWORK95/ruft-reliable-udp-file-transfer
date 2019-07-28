@@ -6,6 +6,15 @@
 
 #define PORT     8080 
 
+
+#define LIST    0
+
+#define GET     1
+
+#define PUT     2
+
+
+
 int                     sockfd; 
 struct sockaddr_in      servaddr;
 
@@ -253,7 +262,7 @@ void * receptionist( void * client_infos ) {
 
     switch( request_type ) {
 
-        case 0:     /* LIST request */                
+        case LIST:     /* LIST request */                
 
             sprintf( ( my_client -> buffer ), "%ld", strlen(list) );
 
@@ -261,7 +270,7 @@ void * receptionist( void * client_infos ) {
             
             break;
 
-        case 1:     /* GET (DOWNLOAD) request */
+        case GET:     /* GET (DOWNLOAD) request */
             
             tmp = ( my_client -> buffer ) + strlen(tmp);                 memset( ( my_client -> buffer ), 0 , strlen( my_client -> buffer ) );
 
@@ -271,7 +280,7 @@ void * receptionist( void * client_infos ) {
 
             break;
 
-        case 2:
+        case PUT:
 
             break;
 

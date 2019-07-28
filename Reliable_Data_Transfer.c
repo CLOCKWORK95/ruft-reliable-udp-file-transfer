@@ -49,9 +49,9 @@ typedef struct sliding_window_slot_ {
 
     struct timespec         *acked_timestamp;                           //Istant of ack receiving.
 
-    long                    timeout_interval;                          //Timeout Interval of retransmission.
+    long                    timeout_interval;                           //Timeout Interval of retransmission.
 
-    char                    *packet;                                     //The packet.          
+    char                    *packet;                                    //The packet.          
 
     struct sliding_window_slot_     *next;                              //Pointer to the next slot.
 
@@ -64,9 +64,13 @@ typedef struct sliding_window_slot_ {
 
 typedef struct receiving_window_slot_ {
 
+    char                    is_first;                                   // '0' : not first    |    '1' : first.  
+
     int                     sequence_number;                            //Sequence number of related packet.                             
 
     int                     status;                                     // WAITING - RECEIVED
+
+    char                    *packet;                                    //Received packet.
 
     struct receiving_window_slot_     *next;                            //Pointer to the next slot.
 
@@ -117,6 +121,45 @@ sw_slot*   get_sliding_window() {
 
 }
 
+/*  This function allocates, initiate and returns a new receiving window of size WINDOW_SIZE, as defined at the top of this file.   */
+rw_slot*   get_rcv_window() {
+
+    rw_slot * window;
+
+    window = malloc( sizeof( rw_slot ) );
+    if (window == NULL){
+        printf("Error in function : malloc (get_sliding_window).");
+        return NULL;
+    }
+
+    window -> sequence_number = 0;
+    window -> is_first = '1';
+    window -> status = WAITING;
+
+    rw_slot * tmp = window;
+
+    for ( int i = 1 ; i < WINDOW_SIZE ; i ++ ) {
+
+        tmp -> next = malloc( sizeof( sw_slot ) );
+        if ( ( tmp -> next ) == NULL) {
+            printf("Error in function : malloc (get_sliding_window).");
+            return NULL;
+        }
+
+        tmp = ( tmp -> next );
+
+        tmp -> sequence_number = i;
+        window -> is_first = '0';
+        tmp -> status = WAITING;
+
+    }
+
+    tmp -> next  = window;
+
+    return window;
+
+}
+
 
 
 
@@ -128,7 +171,7 @@ sw_slot*   get_sliding_window() {
     The file has to be sent to the client_address through the block's socket specified in socket_descriptor.
     Reliable Data Transfer is implemented as a pipelining ' sliding window 'protocol, using ACKs and timout-retransmissions.
 */
-int reliable_file_transfer ( int identifier, int    socket_descriptor, struct sockaddr_in    client_address , FILE  *buffer_cache , sw_slot   *window) {
+int reliable_file_forward( int identifier, int    socket_descriptor, struct sockaddr_in  client_address , FILE  *buffer_cache , sw_slot   *window) {
 
     int         ret,    len,    filesize,   counter = 0;
 
@@ -273,6 +316,11 @@ int reliable_file_transfer ( int identifier, int    socket_descriptor, struct so
 
     return counter;
 
+
+}
+
+
+int reliable_file_rcv(){
 
 }
 

@@ -4,6 +4,12 @@
 
 #define PORT     8080 
 
+#define LIST    0
+
+#define GET     1
+
+#define PUT     2
+
 int                     sockfd; 
 char                    buffer[MAXLINE],        msg[MAXLINE]; 
 struct sockaddr_in      servaddr; 
@@ -81,8 +87,8 @@ ops:
 
     switch(op) {
 
-        case 0:
-            /* LIST */
+        case LIST:     
+
             list_request();
             printf("\n\nPress a button to proceed...");
 
@@ -91,13 +97,11 @@ ops:
             while( getchar() != '\n'){};
             break;
 
-        case 1:
-            /* GET */
+        case GET:
 
             break;
 
-        case 2:
-            /* PUT */
+        case PUT:
 
             break;
 

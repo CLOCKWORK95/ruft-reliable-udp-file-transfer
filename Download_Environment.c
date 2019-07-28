@@ -306,7 +306,7 @@ void * work ( void * _worker ) {
 
     myblock -> BLTC ++;
 
-    ret = reliable_file_transfer( (me -> identifier), ( me -> sockfd ), ( me -> client_addr ), ( me -> my_block-> buffer_cache ), ( me -> sliding_window_slot_ ) );
+    ret = reliable_file_forward( (me -> identifier), ( me -> sockfd ), ( me -> client_addr ), ( me -> my_block-> buffer_cache ), ( me -> sliding_window_slot_ ) );
     if (ret == -1) {
         printf("Error in function : reliable_data_trasnfer.");
         goto redo;
