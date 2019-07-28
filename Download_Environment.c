@@ -1,4 +1,5 @@
 /* Server side implementation of RUFT : DOWNLOAD ENVIRONMENT */
+#pragma once
 #include "header.h"
 #include "Reliable_Data_Transfer.c"
 #include "time_toolbox.c"
@@ -6,7 +7,7 @@
 #define MAX_WORKERS     5
 
 
-struct block;
+struct block_;
 
 
 /*  
@@ -20,7 +21,7 @@ typedef struct worker_{
 
     int                     identifier;                                 //Unique identifier of the worker of a block, to receive ACKs.
 
-    block                  *my_block;                                   //The block containing this worker instance.
+    struct block_           *my_block;                                   //The block containing this worker instance.
 
     pthread_t               tid;                                        //Identifier of the working-thread.
 
@@ -63,7 +64,7 @@ typedef struct block_ {
     int                     BLTC;                                       //Block Life Timer Countdown.
 
 
-}               block;                                                  extern      block        *download_environment;
+}               block;                                                  block        *download_environment;
 
 
 
@@ -101,7 +102,8 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in clie
     
     ret = sprintf( ( new_block -> filename ), pathname );                                   //match a file path.
     if (ret == -1) {
-        printf("Error in function : sprintf.", 1);
+        printf("Error in function : sprintf.");
+        return -1;
     }
 
     new_block -> buffer_cache = fopen( pathname, "r");                                      //open a (readonly) session on file and create the file stream.
@@ -110,7 +112,7 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in clie
         return -1;
     }
 
-    new_block -> BLTC = (int) ( strlen( new_block -> buffer_cache ) / PACKET_SIZE  ) ;      //set the BLTC default value proportional to the file size.
+    new_block -> BLTC = (int) ( strlen( (char *) ( new_block -> buffer_cache ) ) / PACKET_SIZE  ) ;      //set the BLTC default value proportional to the file size.
 
     
     if ( ( ( new_block -> server_sock_desc ) = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) {      //creating block's socket file descriptor 
@@ -156,7 +158,7 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in clie
 
     /*  Create the Acknowledgment Multiplexer Thread, to handle acknowledgments throughout the block. */
 
-    ret = pthread_create( ( new_block -> ack_dmplx_thread ), NULL, acknowledgment_demultiplexer, (void *) new_block );
+    ret = pthread_create( &( new_block -> ack_dmplx_thread ), NULL, acknowledgment_demultiplexer, (void *) new_block );
     if (ret ==-1) {
         printf("Error in function : pthread_create(init_new_block).");
         return -1;
@@ -255,7 +257,7 @@ int start_download( char *pathname , struct sockaddr_in client_address ) {
         A new block related to the requested file is going to be allocated, so that this request can be
         handled. */
 
-    printf("\n\n Allocating a new block for file %s in Server's Download Environment...");
+    printf("\n\n Allocating a new block for file %s in Server's Download Environment...", pathname);
 
     ret = init_new_block( last_block -> next, pathname, client_address);
     if (ret == -1) {
@@ -434,7 +436,7 @@ void * time_wizard( void * _worker ){
                 
                 if ( nanodifftime( now, window -> sent_timestamp )  >= ( window -> timeout_interval ) ){
 
-                    if ( retransmission( window, wrkr -> sockfd, &(wrkr -> client_addr) ) == -1 )     Error("Error in function: retransmission (time_wizard).", 1);
+                    if ( retransmission( window, wrkr -> sockfd, &(wrkr -> client_addr) ) == -1 )     Error_("Error in function: retransmission (time_wizard).", 1);
 
                 }
 

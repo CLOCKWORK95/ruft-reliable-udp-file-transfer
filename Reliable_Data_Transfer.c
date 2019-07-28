@@ -1,4 +1,5 @@
 /*  Here is implemented all of the Reliable Transfer Logic, used by transferring sections of RUFT client's and server's software. */
+#pragma once
 #include "header.h"
 #include "time_toolbox.c"
 

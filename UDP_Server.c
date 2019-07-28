@@ -18,7 +18,7 @@ char *                  list;
 
 /* REQUEST HANDLERS DECLARATION */
 
-int     list_request_handler( char * buffer );
+int     list_request_handler( char * buffer, struct sockaddr_in *clientaddr );
 
 int     download_request_handler( char * pathname, struct sockaddr_in clientaddr );
 
@@ -98,7 +98,13 @@ int main(int argc, char ** argv) {
 
                 memset(buffer, 0 , strlen(buffer));         sprintf( buffer, "%ld", strlen(list));
 
-                if ( list_request_handler( buffer ) != 0 )       Error_("Error in function : list_request_handler.", 1);
+                /* Send the directory's size to the client. */
+                ret = sendto( sockfd, (const char *) buffer, strlen(buffer), MSG_CONFIRM, (const struct sockaddr *) &client_address, len );
+                if (ret == -1)      Error_("Error in function : sendto (main).", 1);
+
+                /* Send the directory's file names list to the client. */
+                ret = sendto( sockfd, (const char *) list, strlen(list), MSG_CONFIRM, (const struct sockaddr *) &client_address, len );
+                if (ret == -1)      Error_("Error in function : sendto (main).", 1);
                 
                 break;
 
@@ -194,16 +200,18 @@ char* load_dir( int size ) {
 
 /* REQUEST HANDLERS IMPLEMENTATION */
 
-int list_request_handler( char * buffer ){
+int list_request_handler( char * buffer , struct sockaddr_in *clientaddr ){
 
-    int ret,    len;
+    int ret;    socklen_t len;
+
+    len = (socklen_t) sizeof( *clientaddr );
 
     /* Send the directory's size to the client. */
-    ret = sendto( sockfd, (const char *) buffer, strlen(buffer), MSG_CONFIRM, (const struct sockaddr *) &client_address, len);
+    ret = sendto( sockfd, (const char *) buffer, strlen(buffer), MSG_CONFIRM, (const struct sockaddr *) clientaddr, len );
     if (ret == -1)      Error_("Error in function : sendto (main).", 1);
 
     /* Send the directory's file names list to the client. */
-    ret = sendto( sockfd, (const char *) list, strlen(list), MSG_CONFIRM, (const struct sockaddr *) &client_address, len);
+    ret = sendto( sockfd, (const char *) list, strlen(list), MSG_CONFIRM, (const struct sockaddr *) clientaddr, len );
     if (ret == -1)      Error_("Error in function : sendto (main).", 1);
 
     return 0;
