@@ -36,9 +36,9 @@ long nanodifftime ( struct timespec *time1, struct timespec *time2 ){
 }
 
 /*calculates the adaptive RTT according to RFC 6298's rules. */
-long get_adaptive_TO(struct timespec *in_time, struct timespec *fin_time){
+long get_adaptive_TO(struct timespec *in_time, struct timespec *fin_time, long old_timeout){
 	
-	long estimatedRTT = TIMEOUT_INTERVAL;
+	long estimatedRTT = old_timeout;
 	
 	long devRTT,		toInterval;
 	
@@ -51,8 +51,6 @@ long get_adaptive_TO(struct timespec *in_time, struct timespec *fin_time){
 	estimatedRTT = (0.875 * estimatedRTT) + (0.125 * sampleRTT);
 	devRTT = (0.75 * devRTT) + (0.25 * (fabs(sampleRTT - estimatedRTT)));
 	toInterval = estimatedRTT + (4 * devRTT);
-	
-	TIMEOUT_INTERVAL = toInterval;
 	
 	return toInterval;	
 	

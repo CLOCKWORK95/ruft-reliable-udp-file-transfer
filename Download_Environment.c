@@ -397,7 +397,7 @@ void * acknowledgement_demultiplexer( void * _block ){
         
         //if (ADAPTIVE) {
         
-			sw_tmp -> timeout_interval = get_adaptive_TO( sw_tmp -> sent_timestamp, sw_tmp -> acked_timestamp );
+			sw_tmp -> timeout_interval = get_adaptive_TO( sw_tmp -> sent_timestamp, sw_tmp -> acked_timestamp , sw_tmp -> timeout_interval);
 	
 		//}
 
