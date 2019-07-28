@@ -48,9 +48,9 @@ typedef struct sliding_window_slot_ {
 
     struct timespec         *acked_timestamp;                           //Istant of ack receiving.
 
-    long                    timeout_interval;                          //Timeout Interval of retransmission.
+    long                    timeout_interval;                           //Timeout Interval of retransmission.
 
-    char                    *packet;                                     //The packet.          
+    char                    *packet;                                    //The packet.          
 
     struct sliding_window_slot_     *next;                              //Pointer to the next slot.
 
@@ -198,7 +198,7 @@ int reliable_file_transfer ( int identifier, int    socket_descriptor, struct so
 
             tmp -> packet = packet;                                                                 //temporarily write the packet on its sliding window's slot.
 
-            tmp -> timeout_interval = TIMEOUT_INTERVAL;                                             //set the timeout interval for retransmission.
+            tmp -> timeout_interval = INITIAL_TIMEOUT;                                             //set the timeout interval for retransmission.
 
 
             /*  Send the packet to the client through the block's socket */

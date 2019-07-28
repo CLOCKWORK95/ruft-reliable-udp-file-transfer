@@ -3,7 +3,7 @@
 #include "header.h"
 
 struct timespec         beat = { 0, 70000000 };
-long                    TIMEOUT_INTERVAL = (long) 1000000000;
+long                    INITIAL_TIMEOUT = (long) 1000000000;
 
 
 int current_timestamp(struct timespec* time) {

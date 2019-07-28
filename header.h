@@ -18,7 +18,7 @@
 #define Error_(x,y)     { puts(x); exit(y); }
 #define MAXLINE 1024 
 
-extern long                TIMEOUT_INTERVAL;
+extern long                INITIAL_TIMEOUT;
 extern struct timespec     beat;
 
 

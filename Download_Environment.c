@@ -31,6 +31,8 @@ typedef struct worker_{
     char                    is_working;                                 // '0' : sleeping   |   '1' : working.
 
     sw_slot                 *sliding_window_slot_;                      //Circular linked list of sliding window's slots, related to this worker instance.
+    
+    long 					adaptive_TO;								//Current Timeout interval, calculated with RFC 6298's rules. 
 
     struct worker_          *next;                                      //Pointer to the next worker of the same block (NULL if this is the last worker).
 
@@ -397,7 +399,7 @@ void * acknowledgement_demultiplexer( void * _block ){
         
         //if (ADAPTIVE) {
         
-			sw_tmp -> timeout_interval = get_adaptive_TO( sw_tmp -> sent_timestamp, sw_tmp -> acked_timestamp , sw_tmp -> timeout_interval);
+			w_tmp -> timeout_interval = get_adaptive_TO( sw_tmp -> sent_timestamp, sw_tmp -> acked_timestamp , sw_tmp -> timeout_interval);
 	
 		//}
 
