@@ -72,6 +72,8 @@ typedef struct receiving_window_slot_ {
 
     char                    *packet;                                    //Received packet.
 
+    char                    *header;                                    //Received packet's header.
+
     struct receiving_window_slot_     *next;                            //Pointer to the next slot.
 
 }               rw_slot;
@@ -177,7 +179,7 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
 
     /*  Get the sliding window for this transfer occurrence. */
 
-    window = get_sliding_window();                                 //returns a pointer to a linked circular list of sliding window's slots.
+    window = get_sliding_window();                                                      //returns a pointer to a linked circular list of sliding window's slots.
 
     sw_slot     *tmp =                  window;
 
@@ -320,7 +322,7 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
 }
 
 
-int reliable_file_rcv(){
+int reliable_file_receive(){
 
 }
 

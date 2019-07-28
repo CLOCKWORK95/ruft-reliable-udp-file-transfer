@@ -10,10 +10,38 @@
 
 #define PUT     2
 
+
 int                     sockfd; 
 char                    buffer[MAXLINE],        msg[MAXLINE]; 
 struct sockaddr_in      servaddr; 
 
+
+struct file_download_infos {
+
+    pthread_t                       downloader;                                     // thread identifier of the file downloader (RDT).
+
+    pthread_t                       writer;                                         // thread identifier of the file writer.
+
+    rw_slot                         *rcv_wnd;                                       // download instance receiving window.
+
+    int                             identifier;                                     // working-thread's identifier on RUFT server side.
+
+    char                            pathname[MAXLINE];                              // client-side pathname of transcribing file.
+
+    char                            ACK[MAXLINE];
+
+    struct sockaddr_in              dwld_servaddr;
+
+    int                             dwld_serv_len;
+
+};
+
+
+/* THREAD FUNCTIONS DECLARATION */
+
+void * downloader( void * infos);
+
+void * writer( void * infos);
 
 
 
@@ -77,7 +105,7 @@ int main(int argc, char** argv) {
     int n, len, op; 
 
 
-ops:
+ ops:
 
     display();
 
@@ -121,6 +149,14 @@ ops:
 
 
 
+
+
+
+
+/* REQUEST FUNCTIONS IMPLEMENTATION */
+
+
+/* This function implements the list request. */
 int list_request() {
 
     int     ret,    len;
@@ -163,55 +199,119 @@ int list_request() {
 
 
 
-
 int download_request() {
 
-    int                     ret,            len,            dwld_serv_len;
+    int                             ret,                     len;
 
-    struct sockaddr_in      dwld_servaddr;       
+    char                            request[MAXLINE],        *filename;
 
-    char                    request[MAXLINE],       pathname[MAXLINE],        *filename;
+
+    struct file_download_infos      *infos = malloc ( sizeof( struct file_download_infos ) );
+
 
     /* Set the request packet's fields. */
 
     sprintf( request, "1/");
 
-    printf("Enter the file name here : ");
-
-    scanf( "%s", filename );
+    printf("Enter the file name here : ");                scanf( "%s", filename );
 
     sprintf( ( request + strlen( request ) ), "./server_directory/%s", filename );
 
-    sprintf( pathname, "./client_directory/%s", filename );
+    sprintf( ( infos -> pathname ), "./client_directory/%s", filename );
 
 
-    // Create the new file in client's directory and open a writing session on it.
-    int fd = open( pathname, O_WRONLY | O_CREAT | O_TRUNC );
-
-
-    // Sending download request.
-    ret = sendto(sockfd, (const char *) request, strlen(request), MSG_CONFIRM, (const struct sockaddr *) &servaddr,  sizeof(servaddr)); 
+    // Sending get-request specifing the name of the file to download.
+    ret = sendto( sockfd, (const char *) request, strlen(request), MSG_CONFIRM, (const struct sockaddr *) &(servaddr),  sizeof(servaddr) ); 
     if (ret <= 0) {
         printf("Error in function : sendto (download_request).");
         return -1;
     }
 
+    if ( pthread_create( &( infos -> downloader ), NULL, downloader, (void *) infos ) == -1 )       Error_("Error in function : pthread_create (download_request).", 1);
+
+    if ( pthread_create( &( infos -> writer ), NULL, writer, (void *) infos ) == -1 )       Error_("Error in function : pthread_create (download_request).", 1);
+
+
+
+    /*  Receiving confirm of begin transaction or error packet.
+    ret = recvfrom( sockfd, (char *) buffer, MAXLINE,  MSG_WAITALL, (struct sockaddr *) &servaddr,  &len ); 
+    if (ret <= 0) {
+        printf("Error in function : recvfrom (list_request).");
+        return -1;
+    } */
+
+    
+
+
+    return 0;
+    
+}
+
+
+
+void * downloader( void * infos_ ){
+
+    int                             ret;
+
+    struct file_download_infos      *infos = (struct file_download_infos *) infos_;
+
+    char                            rcv_buffer[MAXLINE];
+
+
     // Download File.
+
+    infos -> rcv_wnd = get_rcv_window();
+
     do{
 
-        ret = recvfrom( sockfd, (char *) buffer, MAXLINE,  MSG_WAITALL, (struct sockaddr *) &dwld_servaddr, &dwld_serv_len ); 
+        ret = recvfrom( sockfd, (char *) rcv_buffer, MAXLINE,  MSG_WAITALL, (struct sockaddr *) &( infos -> dwld_servaddr ), &( infos -> dwld_serv_len ) ); 
         if (ret <= 0) {
             printf("Error in function : recvfrom (list_request).");
             return -1;
         }
 
-        
+        int identifier = atoi( ( strtok( rcv_buffer, "/") ) );
 
+        if ( identifier == ( infos -> identifier ) ) {
+
+            rw_slot *wnd_tmp = ( infos -> rcv_wnd );
+
+            int sequence_number = atoi( strtok( NULL, "/") );
+
+            for (int i = 0; i < WINDOW_SIZE; i++) {
+
+                if ( wnd_tmp -> sequence_number == sequence_number ) {
+
+                    if ( sprintf( ( wnd_tmp -> packet), "%s", ( rcv_buffer + HEADER_SIZE ) ) == -1 )        Error_( "Error in function : sprintf (downloader).", 1);
+
+                    if ( ( wnd_tmp -> is_first ) == '1' )       pthread_kill( infos -> writer, SIGUSR2 );
+
+                    // SLIDE THE WINDOW!!!! AND CLOSE THE CYCLE!!!! AND MAKE THE WRITER TASK!!!!
+
+                    break;
+                }
+
+            }
+
+
+
+
+
+
+
+
+        }
 
 
     } while(1);
 
 
-    return 0;
-    
+
+
+
+}
+
+
+void * writer( void * infos ){
+
 }
