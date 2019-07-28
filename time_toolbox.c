@@ -52,8 +52,8 @@ long get_adaptive_TO(struct timespec *in_time, struct timespec *fin_time){
 	devRTT = (0.75 * devRTT) + (0.25 * (fabs(sampleRTT - estimatedRTT)));
 	toInterval = estimatedRTT + (4 * devRTT);
 	
+	TIMEOUT_INTERVAL = toInterval;
+	
 	return toInterval;	
 	
-	} 
-	
-		
+} 
