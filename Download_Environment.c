@@ -56,7 +56,7 @@ typedef struct block_ {
 
     worker                  *workers;                                   //Array of block's workers. 
 
-    pthread_t               ack_dmplx_thread;                           //Acknowledgments demultiplexer thread's TID.
+    pthread_t               ack_dmplx_thread;                           //Acknowledgements demultiplexer thread's TID.
 
     struct block_           *next;                                      //Pointer to next block structure.
 
@@ -72,7 +72,7 @@ typedef struct block_ {
 void * work( void* _worker );
 
 
-void * acknowledgment_demultiplexer( void * _block );
+void * acknowledgement_demultiplexer( void * _block );
 
 
 void * time_wizard( void * _worker);
@@ -154,9 +154,9 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in clie
     tmp -> client_addr = client_address;
 
 
-    /*  Create the Acknowledgment Multiplexer Thread, to handle acknowledgments throughout the block. */
+    /*  Create the Acknowledgement Multiplexer Thread, to handle acknowledgements throughout the block. */
 
-    ret = pthread_create( ( new_block -> ack_dmplx_thread ), NULL, acknowledgment_demultiplexer, (void *) new_block );
+    ret = pthread_create( ( new_block -> ack_dmplx_thread ), NULL, acknowledgement_demultiplexer, (void *) new_block );
     if (ret ==-1) {
         printf("Error in function : pthread_create(init_new_block).");
         return -1;
@@ -292,7 +292,7 @@ void incoming_ack(){}                                                           
 void * work ( void * _worker ) {
 
     signal( SIGUSR1, wake_up);              //Set the waking up event handler.
-    signal( SIGUSR2, incoming_ack);         //Set the ACKNOWLEDGMENT event handler (signal has to be forwarded by a specialized thread, working for all block's workers).
+    signal( SIGUSR2, incoming_ack);         //Set the ACKNOWLEDGEMENT event handler (signal has to be forwarded by a specialized thread, working for all block's workers).
 
     int ret;
 
@@ -323,12 +323,12 @@ void * work ( void * _worker ) {
 
 
 /*  
-    This is the block's acknowledgment keeper (and demultiplexer) thread function.
-    By this function, this thread receives block's client's acknowledgments and executes demultiplexing of them: 
+    This is the block's acknowledgement keeper (and demultiplexer) thread function.
+    By this function, this thread receives block's client's acknowledgements and executes demultiplexing of them: 
     each ACK is directed to a specific block's worker, and further to a specific slot of its sliding window.
     This thread is responsible for notifying workers about the received ACKs and for awakening a worker waiting for sliding his window on.
 */
-void * acknowledgment_demultiplexer( void * _block ){
+void * acknowledgement_demultiplexer( void * _block ){
 
 
     int     ret,    len;
@@ -347,22 +347,22 @@ void * acknowledgment_demultiplexer( void * _block ){
 
     do {
 
-        /*  Receive a packet (acknowledgments) from related block's socket.  */
+        /*  Receive a packet (acknowledegments) from related block's socket.  */
 
         struct sockaddr     client_address;
 
         memset( buffer, 0, sizeof( buffer ) );
 
         ret = recvfrom( myblock -> server_sock_desc, (char *) buffer, ACK_SIZE , MSG_WAITALL, ( struct sockaddr *) &client_address, &len); 
-        if (ret <= 0)       Error_("Error in function : recvfrom (acknowledgment_demultiplexer).", 1);
+        if (ret <= 0)       Error_("Error in function : recvfrom (acknowledgement_demultiplexer).", 1);
 
         /*  Parse the packet to keep separated the identifier and sequence number fields.  */
 
         ret = sprintf( id, "%s", strtok( buffer, "/" ) );
-        if (ret == -1)      Error_("Error in function sprintf (acknowledgment_demultiplexer).", 1);
+        if (ret == -1)      Error_("Error in function sprintf (acknowledgement_demultiplexer).", 1);
 
         ret = sprintf( seq_num, "%s", strtok( NULL, "/" ) );
-        if (ret == -1)      Error_("Error in function sprintf (acknowledgment_demultiplexer).", 1);
+        if (ret == -1)      Error_("Error in function sprintf (acknowledgement_demultiplexer).", 1);
 
 
         /*  Find the block's worker with identifier as specified on ACK. */
@@ -387,11 +387,19 @@ void * acknowledgment_demultiplexer( void * _block ){
         /*  Update worker window's slot's status from SENT to ACKED. 
             If the slot is the first of the sliding window, forward a SIGUSR2 signal to worker-thread to get the window sliding on. */
 
-        if ( ( sw_tmp -> status ) != SENT )     Error_("Error in acknowledgment handling : unexpected window's status.", 1);
+        if ( ( sw_tmp -> status ) != SENT )     Error_("Error in acknowledgement handling : unexpected window's status.", 1);
 
         sw_tmp -> status = ACKED;
 
         current_timestamp( sw_tmp -> acked_timestamp );
+        
+        /*calculates the adaptive RTT according to RFC 6298's rules. */
+        
+        //if (ADAPTIVE) {
+        
+			sw_tmp -> timeout_interval = get_adaptive_TO( sw_tmp -> sent_timestamp, sw_tmp -> acked_timestamp );
+	
+		//}
 
         if ( ( sw_tmp -> is_first ) == '1' )    pthread_kill( ( w_tmp -> tid ), SIGUSR2 );          
 
