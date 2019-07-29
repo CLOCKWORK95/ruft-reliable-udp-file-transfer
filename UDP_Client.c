@@ -16,6 +16,10 @@ char                    buffer[MAXLINE],        msg[MAXLINE];
 struct sockaddr_in      servaddr; 
 
 
+/* Initializing a pthread mutex for critical accesses on receiving window, shared by downloader and writer threads. */
+pthread_mutex_t rcv_window_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+
 struct file_download_infos {
 
     pthread_t                       downloader;                                     // thread identifier of the file downloader (RDT).
@@ -28,7 +32,7 @@ struct file_download_infos {
 
     char                            pathname[MAXLINE];                              // client-side pathname of transcribing file.
 
-    char                            ACK[MAXLINE];
+    char                            ACK[ACK_SIZE];                                   
 
     struct sockaddr_in              dwld_servaddr;
 
@@ -54,7 +58,11 @@ int download_request();
 
 int upload_request();
 
+/* WRITE SIGNAL HANDLER (SIGUSR2) */
 
+void write_sig_handler( int signo){
+
+}
 
 
 
@@ -232,21 +240,15 @@ int download_request() {
     if ( pthread_create( &( infos -> writer ), NULL, writer, (void *) infos ) == -1 )       Error_("Error in function : pthread_create (download_request).", 1);
 
 
-
-    /*  Receiving confirm of begin transaction or error packet.
-    ret = recvfrom( sockfd, (char *) buffer, MAXLINE,  MSG_WAITALL, (struct sockaddr *) &servaddr,  &len ); 
-    if (ret <= 0) {
-        printf("Error in function : recvfrom (list_request).");
-        return -1;
-    } */
-
-    
-
-
     return 0;
     
 }
 
+
+
+
+
+/* THREAD FUNCTIONS IMPLEMENTATION : CLIENT SIDE's "DOWNLOAD ENVIRONMENT" */
 
 
 void * downloader( void * infos_ ){
@@ -265,14 +267,15 @@ void * downloader( void * infos_ ){
     do{
 
         ret = recvfrom( sockfd, (char *) rcv_buffer, MAXLINE,  MSG_WAITALL, (struct sockaddr *) &( infos -> dwld_servaddr ), &( infos -> dwld_serv_len ) ); 
-        if (ret <= 0) {
-            printf("Error in function : recvfrom (list_request).");
-            return -1;
-        }
-
+        if (ret <= 0)       Error_("Error in function : recvfrom (list_request).", 1);
         int identifier = atoi( ( strtok( rcv_buffer, "/") ) );
 
         if ( identifier == ( infos -> identifier ) ) {
+
+            /*  THIS IS A CRITIAL SECTION FOR RECEIVING WINDOWS ACCESS ON WRITING. 
+                DOWNLOADER THREAD TAKES A TOKEN FROM MUTEX TO RUN THIS CODE BLOCK. */
+
+            if ( pthread_mutex_lock( &rcv_window_mutex ) == -1 )        Error_("Error in function : pthread_mutex_lock (downloader).", 1);
 
             rw_slot *wnd_tmp = ( infos -> rcv_wnd );
 
@@ -282,23 +285,40 @@ void * downloader( void * infos_ ){
 
                 if ( wnd_tmp -> sequence_number == sequence_number ) {
 
+                    /* Send an ACKNOWLEDGMENT to the RUFT Server Side. */
+
+                    sprintf( ( infos -> ACK ), "%d/%d/", identifier, sequence_number );
+
+                    ret = sendto(sockfd, (const char *) ( infos -> ACK ), strlen( infos -> ACK ), MSG_CONFIRM, 
+                                 (const struct sockaddr *) &( infos -> dwld_servaddr ),  sizeof( infos -> dwld_serv_len )); 
+                    if (ret <= 0)       Error_("Error in function : sendto (downloader).", 1);
+
+                    /* Update rcv_window's slot status.  */
+                    wnd_tmp -> status = RECEIVED;
+
                     if ( sprintf( ( wnd_tmp -> packet), "%s", ( rcv_buffer + HEADER_SIZE ) ) == -1 )        Error_( "Error in function : sprintf (downloader).", 1);
 
-                    if ( ( wnd_tmp -> is_first ) == '1' )       pthread_kill( infos -> writer, SIGUSR2 );
+                    if ( ( wnd_tmp -> is_first ) == '1' ) {
 
-                    // SLIDE THE WINDOW!!!! AND CLOSE THE CYCLE!!!! AND MAKE THE WRITER TASK!!!!
+                        /* If this is the first slot of the window, then alert the writer about it (SIGUSR2) so that it could slide the rcv_window on. */
+
+                        pthread_kill( infos -> writer, SIGUSR2 );
+
+                        if ( pthread_mutex_unlock( &rcv_window_mutex ) == -1 )        Error_("Error in function : pthread_mutex_unlock (downloader).", 1);
+
+                    }
 
                     break;
                 }
 
+                wnd_tmp = wnd_tmp -> next;
+
             }
 
+            if ( pthread_mutex_unlock( &rcv_window_mutex ) == -1 )        Error_("Error in function : pthread_mutex_unlock (downloader).", 1);
 
 
-
-
-
-
+            /* END OF CRITICAL SECTION FOR RECEIVING WINDOW'S ACCESS. */
 
         }
 
@@ -306,12 +326,81 @@ void * downloader( void * infos_ ){
     } while(1);
 
 
-
-
-
 }
 
 
-void * writer( void * infos ){
+void * writer( void * infos_ ){
+
+    /* Temporarily block SIGUSR2 signal occurrences. */
+    sigset_t                                    set;
+    sigemptyset( &set );
+    sigaddset( &set, SIGUSR2);
+    signal( SIGUSR2, write_sig_handler);
+    sigprocmask( SIG_BLOCK, &set, NULL );
+
+    int                                         ret,            file_descriptor,            counter = 0;
+
+    struct file_download_infos                  *infos = ( struct file_download_infos * ) infos_;
+
+    /* Create the new file in client's directory or truncate an existing one with the same pathname, to start download. */
+    file_descriptor = open( ( infos -> pathname ), O_WRONLY | O_CREAT | O_TRUNC );  
+    if (file_descriptor == -1)      Error_("Error in function : open (wirter).", 1);
+
+    do{
+        /* Be ready to be awaken by SIGUSR2 occurrence. Go on pause. */
+        sigprocmask( SIG_UNBLOCK, &set, NULL );
+
+        pause();
+
+        /* Temporarily block SIGUSR2 signal occurrences. */
+        sigprocmask( SIG_BLOCK, &set, NULL );
+
+        {   
+            /*  THIS IS A CRITIAL SECTION FOR RECEIVING WINDOWS ACCESS ON WRITING. 
+                WRITER THREAD TAKES A TOKEN FROM MUTEX TO RUN THIS CODE BLOCK. */
+
+            if ( pthread_mutex_lock( &rcv_window_mutex ) == -1 )        Error_("Error in function : pthread_mutex_lock (writer).", 1);
+        
+            rw_slot      *wnd_tmp = ( infos -> rcv_wnd );
+
+            rw_slot      *curr_first   = ( infos -> rcv_wnd );
+
+            while ( wnd_tmp -> status == RECEIVED ) {
+                
+                /* Write the packet within the new file in client's directory. */
+                ret = write( file_descriptor, ( wnd_tmp -> packet ), PACKET_SIZE );
+                if ( ret == -1)         Error_( "Error in function : write (thread writer).", 1);
+
+                counter ++;
+
+                wnd_tmp = ( wnd_tmp -> next );
+
+            }
+
+            
+            while ( curr_first -> status == RECEIVED ){
+
+                /* Slide the receiving window on. */
+
+                ( curr_first -> sequence_number ) += WINDOW_SIZE;
+                ( curr_first -> status ) == WAITING;
+                memset( ( curr_first -> packet ), 0, PACKET_SIZE );
+                curr_first -> is_first = '0';
+
+                curr_first -> next -> is_first = '1';
+                curr_first = ( curr_first -> next );
+                infos -> rcv_wnd = curr_first;
+
+            }
+
+            if ( pthread_mutex_unlock( &rcv_window_mutex ) == -1 )        Error_("Error in function : pthread_mutex_unlock (writer).", 1);
+
+            /* END OF THE CRITICAL SECTION. */
+
+        }
+
+
+
+    } while (1);
 
 }
