@@ -5,7 +5,7 @@
 #define PORT     8080 
 
 int                     sockfd; 
-char                    buffer[MAXLINE],        msg[MAXLINE]; 
+char                    buffer[MAXLINE],		up_buffer[MAXLINE],        msg[MAXLINE]; 
 struct sockaddr_in      servaddr; 
 
 
@@ -93,12 +93,22 @@ ops:
 
         case 1:
             /* GET */
+            download_request();
+            printf("\n\nPress a button to proceed...");
 
+            char c;
+            scanf("%c", &c);
+            while( getchar() != '\n'){};
             break;
 
         case 2:
             /* PUT */
+            upload_request();
+            printf("\n\nPress a button to proceed...");
 
+            char c;
+            scanf("%c", &c);
+            while( getchar() != '\n'){};
             break;
 
         default:
@@ -201,13 +211,52 @@ int download_request() {
             return -1;
         }
 
-        
-
-
-
     } while(1);
 
 
     return 0;
     
 }
+
+/* Every client can make a request to send more files, but it must specify the number of files to be sent */
+
+int upload_request() {
+
+	int                     ret,            len,            upld_serv_len, 			filenum;
+
+    struct sockaddr_in      upld_servaddr;       
+
+    char                   	request[MAXLINE],       pathname[MAXLINE],        *filename;
+   
+    /* Set the request packet's fields. */
+
+    sprintf( request, "2/");
+
+	printf("Enter the number of files to send : ");
+	
+	scanf( "%d", filenum );
+
+    sprintf( ( request + strlen( request ) ), "%d", filenum );  //adds the number of files after the request number
+    //on server side, filenum files will be created in the server directory
+    
+    
+    // Sending upload request.
+    ret = sendto( sockfd, (const char *) request, strlen(request), MSG_CONFIRM, (const struct sockaddr *) &servaddr,  sizeof(servaddr)); 
+    if (ret <= 0) {
+        printf("Error in function : sendto (upload_request).");
+        return -1;
+    }
+    
+    // Receiving upload permission. (On server side: the files have been created successfully and are ready to be written)
+    ret = recvfrom( sockfd, (char *) buffer, MAXLINE,  MSG_WAITALL, (struct sockaddr *) &servaddr, &len ); 
+    if (ret <= 0) {
+        printf("Error in function : recvfrom (list_request).");
+        return -1;
+    }
+
+    // Upload File.
+    start_upload();
+
+	return 0;
+}
+
