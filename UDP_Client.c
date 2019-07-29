@@ -48,8 +48,6 @@ void * downloader( void * infos);
 void * writer( void * infos);
 
 
-
-
 /* CLIENT AVAILABLE REQUESTS DECLARATION */
 
 int list_request();
@@ -58,11 +56,11 @@ int download_request();
 
 int upload_request();
 
+
+
 /* WRITE SIGNAL HANDLER (SIGUSR2) */
 
-void write_sig_handler( int signo){
-
-}
+void write_sig_handler( int signo){}
 
 
 
@@ -95,7 +93,7 @@ void display() {
 
 int main(int argc, char** argv) { 
 
-    int ret;
+    int ret;      char c;
       
     // Creating socket file descriptor 
     if ( (sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) { 
@@ -127,14 +125,19 @@ int main(int argc, char** argv) {
 
             list_request();
             printf("\n\nPress a button to proceed...");
-
-            char c;
+          
             scanf("%c", &c);
             while( getchar() != '\n'){};
             break;
 
         case GET:
 
+            download_request();
+            printf("\n\nFile is downlading on the background from RUFT Server. Press a button to proceed...");
+
+            scanf("%c", &c);
+            while( getchar() != '\n'){};
+            
             break;
 
         case PUT:
@@ -253,7 +256,7 @@ int download_request() {
 
 void * downloader( void * infos_ ){
 
-    int                             ret;
+    int                             ret,            counter = 0;
 
     struct file_download_infos      *infos = (struct file_download_infos *) infos_;
 
@@ -264,10 +267,21 @@ void * downloader( void * infos_ ){
 
     infos -> rcv_wnd = get_rcv_window();
 
+    /* Receive the file size and the identifier of server worker matched to this download instance. */
+    ret = recvfrom( sockfd, (char *) rcv_buffer, MAXLINE,  MSG_WAITALL, (struct sockaddr *) &( infos -> dwld_servaddr ), &( infos -> dwld_serv_len ) ); 
+    if (ret <= 0)       Error_("Error in function : recvfrom (downloader).", 1);
+
+    /* Initiate the exit-condition's values for the next cycle. */
+    infos -> identifier = atoi( strtok( rcv_buffer, "/" ) );
+    int filesize = atoi( strtok( NULL, "/" ) );
+
+    memset( rcv_buffer, 0, strlen(rcv_buffer) );
+
     do{
 
         ret = recvfrom( sockfd, (char *) rcv_buffer, MAXLINE,  MSG_WAITALL, (struct sockaddr *) &( infos -> dwld_servaddr ), &( infos -> dwld_serv_len ) ); 
-        if (ret <= 0)       Error_("Error in function : recvfrom (list_request).", 1);
+        if (ret <= 0)       Error_("Error in function : recvfrom (downloader).", 1);
+
         int identifier = atoi( ( strtok( rcv_buffer, "/") ) );
 
         if ( identifier == ( infos -> identifier ) ) {
@@ -296,7 +310,9 @@ void * downloader( void * infos_ ){
                     /* Update rcv_window's slot status.  */
                     wnd_tmp -> status = RECEIVED;
 
-                    if ( sprintf( ( wnd_tmp -> packet), "%s", ( rcv_buffer + HEADER_SIZE ) ) == -1 )        Error_( "Error in function : sprintf (downloader).", 1);
+                    if ( sprintf( ( wnd_tmp -> packet ), "%s", ( rcv_buffer + HEADER_SIZE ) ) == -1 )        Error_( "Error in function : sprintf (downloader).", 1);
+
+                    counter += strlen( wnd_tmp -> packet);
 
                     if ( ( wnd_tmp -> is_first ) == '1' ) {
 
@@ -322,8 +338,9 @@ void * downloader( void * infos_ ){
 
         }
 
+        memset( rcv_buffer, 0, strlen(rcv_buffer) );
 
-    } while(1);
+    } while( counter < filesize );
 
 
 }

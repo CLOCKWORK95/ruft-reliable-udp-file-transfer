@@ -206,6 +206,14 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
     sigset_t set;
     sigfillset( &set );
     sigprocmask( SIG_BLOCK, &set, NULL);
+
+    /*  Send worker identifier and total file size to the client, so that it could actually start (and finish!) this file download instance.  */
+    sprintf( packet, "%d/%d/", identifier, filesize );
+    ret = sendto( socket_descriptor, (const char *) packet, strlen(packet), MSG_CONFIRM, (const struct sockaddr *) &client_address, sizeof( client_address ) ); 
+    if (ret == -1) {
+        printf("Error in function sendto (reliable_file_transfer).");
+        return -1;
+    }
     
 
     do {
@@ -322,9 +330,7 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
 }
 
 
-int reliable_file_receive(){
-
-}
+int reliable_file_receive();
 
 
 
