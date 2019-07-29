@@ -237,7 +237,7 @@ int upload_request() {
 	scanf( "%d", filenum );
 
     sprintf( ( request + strlen( request ) ), "%d", filenum );  //adds the number of files after the request number
-    //on server side, filenum files will be created in the server directory
+    //on server side, filenum files will be created in the server directory before the 'ok'
     
     
     // Sending upload request.
@@ -247,7 +247,7 @@ int upload_request() {
         return -1;
     }
     
-    // Receiving upload permission. (On server side: the files have been created successfully and are ready to be written)
+    // Receiving upload permission. (The files have been created successfully on server and are ready to be written)
     ret = recvfrom( sockfd, (char *) buffer, MAXLINE,  MSG_WAITALL, (struct sockaddr *) &servaddr, &len ); 
     if (ret <= 0) {
         printf("Error in function : recvfrom (list_request).");
@@ -255,7 +255,8 @@ int upload_request() {
     }
 
     // Upload File.
-    start_upload();
+    
+    //start_upload(filenum);
 
 	return 0;
 }
