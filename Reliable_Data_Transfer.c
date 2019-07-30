@@ -173,7 +173,7 @@ rw_slot*   get_rcv_window() {
     The file has to be sent to the client_address through the block's socket specified in socket_descriptor.
     Reliable Data Transfer is implemented as a pipelining ' sliding window 'protocol, using ACKs and timout-retransmissions.
 */
-int reliable_file_forward( int identifier, int    socket_descriptor, struct sockaddr_in  client_address , FILE  *buffer_cache , sw_slot   *window) {
+int reliable_file_forward( int identifier, int    socket_descriptor, struct sockaddr_in  *client_address , FILE  *buffer_cache , sw_slot   *window) {
 
     int         ret,    len,    filesize,   counter = 0;
 
@@ -346,7 +346,7 @@ int retransmission( sw_slot *window, int socket_descriptor, struct sockaddr_in  
     int ret;
 
     ret = sendto( socket_descriptor, (const char *) window -> packet , strlen( window -> packet ), 
-                  MSG_CONFIRM, (const struct sockaddr *) clientaddress, sizeof( clientaddress ) ); 
+                  MSG_CONFIRM, (const struct sockaddr *) clientaddress, sizeof( *clientaddress ) ); 
     if (ret == -1) {
         printf("Error in function sendto (reliable_file_transfer).");
         return -1;

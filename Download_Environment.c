@@ -25,7 +25,7 @@ typedef struct worker_{
 
     pthread_t               tid;                                        //Identifier of the working-thread.
 
-    struct sockaddr_in      client_addr;                                //Address of the client who made the request.
+    struct sockaddr_in      *client_addr;                                //Address of the client who made the request.
 
     int                     sockfd;                                     //Socket descriptor through which sending packets.
 
@@ -87,7 +87,7 @@ void * time_wizard( void * _worker);
     and a new operating socket. This function activates a first thread, serving the request the function has been called to.  
     Returns : 0 on success, -1 on Error.
 */
-int init_new_block ( block *new_block, char * pathname , struct sockaddr_in client_address ){ 
+int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *client_address ){ 
 
     int ret;    
 
@@ -100,13 +100,13 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in clie
 
     /*  Populate the block structure attributes. */
     
-    ret = sprintf( ( new_block -> filename ), pathname );                                   //match a file path.
+    ret = sprintf( (char *) ( new_block -> filename ), "%s", pathname );                                      //match a file path.
     if (ret == -1) {
         printf("Error in function : sprintf.");
         return -1;
     }
 
-    new_block -> buffer_cache = fopen( pathname, "r");                                      //open a (readonly) session on file and create the file stream.
+    new_block -> buffer_cache = fopen( pathname, "r" );                                                   //open a (readonly) session on file and create the file stream.
     if (new_block -> buffer_cache == NULL) {
         printf("Error in function : fopen.");
         return -1;
@@ -115,15 +115,21 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in clie
     new_block -> BLTC = (int) ( strlen( (char *) ( new_block -> buffer_cache ) ) / PACKET_SIZE  ) ;      //set the BLTC default value proportional to the file size.
 
     
-    if ( ( ( new_block -> server_sock_desc ) = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) {      //creating block's socket file descriptor 
+    if ( ( ( new_block -> server_sock_desc ) = socket( AF_INET, SOCK_DGRAM, 0) ) < 0 ) {                 //creating block's socket file descriptor 
         perror("socket creation failed (init new block)."); 
         return -1; 
     }
 
 
+    new_block -> workers = malloc( sizeof( worker ) );                                                  //validate memory area for block's workers.
+    if ( new_block -> workers == NULL ) {
+        printf("Error in function : malloc.");
+        return -1;
+    }
+
     worker *tmp = new_block -> workers;                                                     
 
-    for ( int i = 0; i < MAX_WORKERS; i ++) {                                               //validate memory area for all workers.
+    for ( int i = 0; i < MAX_WORKERS; i ++) {                                                           //validate memory area for all workers.
 
         tmp = malloc( sizeof( worker ) );
         if (tmp == NULL) {
@@ -156,7 +162,7 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in clie
     tmp -> client_addr = client_address;
 
 
-    /*  Create the Acknowledgment Multiplexer Thread, to handle acknowledgments throughout the block. */
+    /*  Create the Acknowledgment Keeper Thread, to handle acknowledgments throughout the block. */
 
     ret = pthread_create( &( new_block -> ack_dmplx_thread ), NULL, acknowledgment_demultiplexer, (void *) new_block );
     if (ret ==-1) {
@@ -203,7 +209,7 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in clie
     If a block matched to pathname doesn't exists yet in Download Environment, this function calls "init_new_block" to allocate a new one.
     Returns : 0 on success, -1 on error.
 */
-int start_download( char *pathname , struct sockaddr_in client_address ) {
+int start_download( char *pathname , struct sockaddr_in *client_address ) {
 
     int ret;
 
@@ -436,7 +442,7 @@ void * time_wizard( void * _worker ){
                 
                 if ( nanodifftime( now, window -> sent_timestamp )  >= ( window -> timeout_interval ) ){
 
-                    if ( retransmission( window, wrkr -> sockfd, &(wrkr -> client_addr) ) == -1 )     Error_("Error in function: retransmission (time_wizard).", 1);
+                    if ( retransmission( window, wrkr -> sockfd, (wrkr -> client_addr) ) == -1 )     Error_("Error in function: retransmission (time_wizard).", 1);
 
                 }
 

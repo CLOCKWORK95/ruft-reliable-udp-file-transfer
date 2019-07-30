@@ -24,7 +24,7 @@ struct client_ {
 
     pthread_t                   tid;
 
-    struct sockaddr_in          client_address;
+    struct sockaddr_in          *client_address;
 
     int                         len;
 
@@ -104,9 +104,18 @@ int main(int argc, char ** argv) {
     } 
 
     /* Validate the first struct client_ instance of clients dynamic liked list, to be filled by new requests infos. */
-    clients = malloc( sizeof( struct client_ ) );              
+    clients = malloc( sizeof( struct client_ ) );  
+
+
+    /* Initialization of Download Environment, by validating memory area for its first block and for the block's first worker. */            
+    download_environment = malloc( sizeof(block) );
+    if ( download_environment            == NULL )       Error_("Error in function : malloc (main.)", 1);
+
+    download_environment -> workers = malloc( sizeof( worker) );        
+    if ( download_environment -> workers == NULL )       Error_("Error in function : malloc (main.)", 1);
     
     struct client_      *tmp = clients;
+
 
     do{
         /* Within this cycle, RUFT Server receives all types of requests from clients, and creates matched-threads to serve each one of them. */
@@ -119,7 +128,7 @@ int main(int argc, char ** argv) {
 
         memset( tmp -> incoming_request, 0, MAXLINE );
 
-        ret = recvfrom( sockfd, (char *) ( tmp -> incoming_request ) , MAXLINE, MSG_WAITALL, ( struct sockaddr *) &(tmp -> client_address) , &( tmp -> len ) ); 
+        ret = recvfrom( sockfd, (char *) ( tmp -> incoming_request ), MAXLINE, MSG_WAITALL, ( struct sockaddr *) ( tmp -> client_address ), &( tmp -> len ) ); 
         if ( ret == -1 ) {
             printf("Error in function : recvfrom() (main).");
             return -1;
@@ -216,11 +225,11 @@ int list_request_handler( struct client_ * client_infos ){
 
     /* Send the directory's size to the client. */
     ret = sendto( sockfd, (const char *) ( client_infos -> buffer ), strlen( client_infos -> buffer ), 
-                  MSG_CONFIRM, (const struct sockaddr *) &( client_infos -> client_address ), ( client_infos -> len ) );
+                  MSG_CONFIRM, (const struct sockaddr *) ( client_infos -> client_address ), ( client_infos -> len ) );
     if (ret == -1)      Error_("Error in function : sendto (main).", 1);
 
     /* Send the directory's file names list to the client. */
-    ret = sendto( sockfd, (const char *) list, strlen(list), MSG_CONFIRM, (const struct sockaddr *) &( client_infos -> client_address ), ( client_infos -> len ) );
+    ret = sendto( sockfd, (const char *) list, strlen(list), MSG_CONFIRM, (const struct sockaddr *) ( client_infos -> client_address ), ( client_infos -> len ) );
     if (ret == -1)      Error_("Error in function : sendto (main).", 1);
 
     return 0;
