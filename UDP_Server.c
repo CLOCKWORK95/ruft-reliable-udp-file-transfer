@@ -24,7 +24,7 @@ struct client_ {
 
     pthread_t                   tid;
 
-    struct sockaddr_in          *client_address;
+    struct sockaddr_in          client_address;
 
     int                         len;
 
@@ -36,7 +36,7 @@ struct client_ {
 
     struct client_              *next;
 
-};                                                              struct _client      *clients;
+};                                                              struct client_      *clients;
 
 
 
@@ -105,13 +105,14 @@ int main(int argc, char ** argv) {
 
     /* Validate the first struct client_ instance of clients dynamic liked list, to be filled by new requests infos. */
     clients = malloc( sizeof( struct client_ ) );  
+    if ( clients == NULL )      Error_("Error in function : malloc (main.)", 1);
 
 
     /* Initialization of Download Environment, by validating memory area for its first block and for the block's first worker. */            
-    download_environment = malloc( sizeof(block) );
+    download_environment = malloc( sizeof( block ) );
     if ( download_environment            == NULL )       Error_("Error in function : malloc (main.)", 1);
 
-    download_environment -> workers = malloc( sizeof( worker) );        
+    download_environment -> workers = malloc( sizeof( worker ) );        
     if ( download_environment -> workers == NULL )       Error_("Error in function : malloc (main.)", 1);
     
     struct client_      *tmp = clients;
@@ -120,7 +121,7 @@ int main(int argc, char ** argv) {
     do{
         /* Within this cycle, RUFT Server receives all types of requests from clients, and creates matched-threads to serve each one of them. */
 
-        //memset( &(tmp -> client_address) , 0, sizeof( tmp -> client_address ) ); 
+        memset( &(tmp -> client_address) , 0, sizeof( tmp -> client_address ) ); 
 
         printf("waiting for request messages...\n\n");
 
@@ -128,19 +129,21 @@ int main(int argc, char ** argv) {
 
         memset( tmp -> incoming_request, 0, MAXLINE );
 
-        ret = recvfrom( sockfd, (char *) ( tmp -> incoming_request ), MAXLINE, MSG_WAITALL, ( struct sockaddr *) ( tmp -> client_address ), &( tmp -> len ) ); 
+        ret = recvfrom( sockfd, (char *) ( tmp -> incoming_request ), MAXLINE, MSG_WAITALL, ( struct sockaddr *) &( tmp -> client_address ), &( tmp -> len ) ); 
         if ( ret == -1 ) {
             printf("Error in function : recvfrom() (main).");
             return -1;
         }
 
         /* Create receptionist thread which starts the serving-job */
-        if ( pthread_create( &( tmp->tid), NULL, receptionist, (void *) clients ) == -1 )       Error_("Error in function : pthread_create (main).", 1);
+        if ( pthread_create( &( tmp -> tid), NULL, receptionist, (void *) clients ) == -1 )       Error_("Error in function : pthread_create (main).", 1);
         
         tmp -> next = malloc( sizeof( struct client_ ) );
         if ( tmp -> next == NULL)       Error_("Error in function : malloc (main).", 1);
 
         tmp = ( tmp -> next );
+
+        memset( tmp -> incoming_request, 0, strlen( tmp -> incoming_request) );
 
 
     } while (1);
@@ -225,11 +228,11 @@ int list_request_handler( struct client_ * client_infos ){
 
     /* Send the directory's size to the client. */
     ret = sendto( sockfd, (const char *) ( client_infos -> buffer ), strlen( client_infos -> buffer ), 
-                  MSG_CONFIRM, (const struct sockaddr *) ( client_infos -> client_address ), ( client_infos -> len ) );
+                  MSG_CONFIRM, (const struct sockaddr *) &( client_infos -> client_address ), ( client_infos -> len ) );
     if (ret == -1)      Error_("Error in function : sendto (main).", 1);
 
     /* Send the directory's file names list to the client. */
-    ret = sendto( sockfd, (const char *) list, strlen(list), MSG_CONFIRM, (const struct sockaddr *) ( client_infos -> client_address ), ( client_infos -> len ) );
+    ret = sendto( sockfd, (const char *) list, strlen(list), MSG_CONFIRM, (const struct sockaddr *) &( client_infos -> client_address ), ( client_infos -> len ) );
     if (ret == -1)      Error_("Error in function : sendto (main).", 1);
 
     return 0;
@@ -239,7 +242,7 @@ int list_request_handler( struct client_ * client_infos ){
 
 int download_request_handler( struct client_ * client_infos ){
 
-    if ( start_download( ( client_infos -> pathname ), ( client_infos -> client_address ) ) == -1 )     return -1;
+    if ( start_download( ( client_infos -> pathname ), &( client_infos -> client_address ) ) == -1 )     return -1;
 
     return 0;
 
