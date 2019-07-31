@@ -21,19 +21,21 @@ typedef struct worker_{
 
     int                     identifier;                                 //Unique identifier of the worker of a block, to receive ACKs.
 
-    struct block_           *my_block;                                   //The block containing this worker instance.
+    struct block_           *my_block;                                  //The block containing this worker instance.
 
     pthread_t               tid;                                        //Identifier of the working-thread.
 
-    struct sockaddr_in      *client_addr;                                //Address of the client who made the request.
+    struct sockaddr_in      *client_addr;                               //Address of the client who made the request.
+
+    int                     len;                                        //Client address' size.
 
     int                     sockfd;                                     //Socket descriptor through which sending packets.
 
-    char                    is_working;                                 // '0' : sleeping   |   '1' : working.
+    char                    is_working;                                 //'0' : sleeping   |   '1' : working.
 
     sw_slot                 *sliding_window_slot_;                      //Circular linked list of sliding window's slots, related to this worker instance.
 
-    struct worker_          *next;                                      //Pointer to the next worker of the same block (NULL if this is the last worker).
+    struct worker_          *next;                               //Pointer to the next worker of the same block (NULL if this is the last worker).
 
 }               worker;
 
@@ -209,18 +211,36 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
     If a block matched to pathname doesn't exists yet in Download Environment, this function calls "init_new_block" to allocate a new one.
     Returns : 0 on success, -1 on error.
 */
-int start_download( char *pathname , struct sockaddr_in *client_address ) {
+int start_download( char *pathname , struct sockaddr_in *client_address, int len ) {
 
-    int ret;
+    int                 ret;
 
-    block *tmp_block = download_environment;
+    block               *tmp_block = download_environment;        
 
-    block *last_block = NULL;
+
+    /*  Verify if this is the first time the download environment is being set up.
+        If it is, it is necessary to initialize a new download environment's block for file's download. */
+
+    if ( tmp_block -> filename == NULL ) {
+
+        printf( "\n\n Allocating a new block for file %s in Server's Download Environment (this is the first block).", pathname ); 
+        fflush( stdout); 
+
+        ret = init_new_block( tmp_block , pathname, client_address);
+        if (ret == -1) {
+            printf("Error in function: init_new_block (start_download).");
+            return -1;
+        }
+
+        return 0;
+    }
+
+
+    block               *last_block = NULL;
 
     do {
 
         if ( strcmp( pathname, ( tmp_block -> filename ) ) == 0 ) {
-
 
             /* if the requested file to download is already present in one of the existing blocks
                of download environment, then the first paused worker of that block is chosen to
@@ -252,6 +272,7 @@ int start_download( char *pathname , struct sockaddr_in *client_address ) {
 
         }
 
+
         last_block = tmp_block;
 
 
@@ -263,7 +284,7 @@ int start_download( char *pathname , struct sockaddr_in *client_address ) {
         A new block related to the requested file is going to be allocated, so that this request can be
         handled. */
 
-    printf("\n\n Allocating a new block for file %s in Server's Download Environment...", pathname);
+    printf("\n\n Allocating a new block for file %s in Server's Download Environment...", pathname); fflush( stdout); sleep(1);
 
     ret = init_new_block( last_block -> next, pathname, client_address);
     if (ret == -1) {

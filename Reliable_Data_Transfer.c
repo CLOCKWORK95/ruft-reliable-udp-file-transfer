@@ -207,6 +207,8 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
     sigfillset( &set );
     sigprocmask( SIG_BLOCK, &set, NULL);
 
+    printf(" Sending worker id and file size to the client! (RDT step 1)."); fflush( stdout ); sleep(1);
+
     /*  Send worker identifier and total file size to the client, so that it could actually start (and finish!) this file download instance.  */
     sprintf( packet, "%d/%d/", identifier, filesize );
     ret = sendto( socket_descriptor, (const char *) packet, strlen(packet), MSG_CONFIRM, (const struct sockaddr *) &client_address, sizeof( client_address ) ); 

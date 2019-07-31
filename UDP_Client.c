@@ -2,7 +2,7 @@
 #include "header.h"
 #include "Reliable_Data_Transfer.c"
 
-#define PORT     8080 
+#define PORT     49152
 
 #define LIST    0
 
@@ -104,9 +104,9 @@ int main(int argc, char** argv) {
     memset(&servaddr, 0, sizeof(servaddr)); 
       
     // Filling server information 
-    servaddr.sin_family = AF_INET; 
-    servaddr.sin_port = htons(PORT); 
-    servaddr.sin_addr.s_addr = INADDR_ANY; 
+    servaddr.sin_family =           AF_INET; 
+    servaddr.sin_port =             htons(PORT); 
+    servaddr.sin_addr.s_addr =      inet_addr("127.0.0.1"); 
       
     int n, len, op; 
 
@@ -214,7 +214,7 @@ int download_request() {
 
     int                             ret,                     len;
 
-    char                            request[MAXLINE],        *filename;
+    char                            request[MAXLINE],        filename[MAXLINE];
 
 
     struct file_download_infos      *infos = malloc ( sizeof( struct file_download_infos ) );
@@ -271,11 +271,19 @@ void * downloader( void * infos_ ){
     ret = recvfrom( sockfd, (char *) rcv_buffer, MAXLINE,  MSG_WAITALL, (struct sockaddr *) &( infos -> dwld_servaddr ), &( infos -> dwld_serv_len ) ); 
     if (ret <= 0)       Error_("Error in function : recvfrom (downloader).", 1);
 
-    /* Initiate the exit-condition's values for the next cycle. */
-    infos -> identifier = atoi( strtok( rcv_buffer, "/" ) );
-    int filesize = atoi( strtok( NULL, "/" ) );
 
-    memset( rcv_buffer, 0, strlen(rcv_buffer) );
+    /* Initiate the exit-condition's values for the next cycle. */
+    char *idtf =          malloc( strlen( rcv_buffer ) );
+    idtf =                strtok( rcv_buffer, "/" );
+    infos -> identifier = atoi( idtf );
+
+    char *filesz =        malloc( strlen( rcv_buffer + strlen( idtf ) ) );
+    filesz =              strtok( NULL, "/" );
+    int filesize =        atoi( filesz );
+
+    memset( rcv_buffer, 0, MAXLINE);
+
+    printf( "here i am 3 (downloader)" ); fflush(stdout); sleep(5);
 
     do{
 
@@ -371,6 +379,8 @@ void * writer( void * infos_ ){
 
         /* Temporarily block SIGUSR2 signal occurrences. */
         sigprocmask( SIG_BLOCK, &set, NULL );
+
+        printf( "here i am awaked (writer)" ); sleep(1);
 
         {   
             /*  THIS IS A CRITIAL SECTION FOR RECEIVING WINDOWS ACCESS ON WRITING. 

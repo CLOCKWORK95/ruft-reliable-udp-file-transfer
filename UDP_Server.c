@@ -4,7 +4,7 @@
 #include "Download_Environment.c"
 #include "Reliable_Data_Transfer.c"
 
-#define PORT     8080 
+#define PORT     49152
 
 
 #define LIST    0
@@ -22,7 +22,7 @@ struct sockaddr_in      servaddr;
 
 struct client_ {
 
-    pthread_t                   tid;
+    pthread_t                   receptionist;
 
     struct sockaddr_in          client_address;
 
@@ -93,9 +93,9 @@ int main(int argc, char ** argv) {
     memset(&servaddr, 0, sizeof(servaddr)); 
       
     /* Filling server information  */
-    servaddr.sin_family      =    AF_INET;                  // IPv4 
-    servaddr.sin_addr.s_addr =    INADDR_ANY;               // 127.0.0.1
-    servaddr.sin_port        =    htons(PORT);              // Well-known RUFT Server port.
+    servaddr.sin_family      =    AF_INET;                   // IPv4 
+    servaddr.sin_addr.s_addr =    inet_addr("127.0.0.1");    // 127.0.0.1
+    servaddr.sin_port        =    htons(PORT);               // Well-known RUFT Server port.
       
     /* Bind the socket with the server address */ 
     if ( bind(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr)) < 0 ) { 
@@ -121,13 +121,9 @@ int main(int argc, char ** argv) {
     do{
         /* Within this cycle, RUFT Server receives all types of requests from clients, and creates matched-threads to serve each one of them. */
 
-        memset( &(tmp -> client_address) , 0, sizeof( tmp -> client_address ) ); 
-
         printf("waiting for request messages...\n\n");
 
         /* Receive a msg. Client Address is not specified, it is set at message arrival through transport layer UDP infos. */ 
-
-        memset( tmp -> incoming_request, 0, MAXLINE );
 
         ret = recvfrom( sockfd, (char *) ( tmp -> incoming_request ), MAXLINE, MSG_WAITALL, ( struct sockaddr *) &( tmp -> client_address ), &( tmp -> len ) ); 
         if ( ret == -1 ) {
@@ -136,15 +132,12 @@ int main(int argc, char ** argv) {
         }
 
         /* Create receptionist thread which starts the serving-job */
-        if ( pthread_create( &( tmp -> tid), NULL, receptionist, (void *) clients ) == -1 )       Error_("Error in function : pthread_create (main).", 1);
+        if ( pthread_create( &( tmp -> receptionist), NULL, receptionist, (void *) clients ) == -1 )       Error_("Error in function : pthread_create (main).", 1);
         
         tmp -> next = malloc( sizeof( struct client_ ) );
         if ( tmp -> next == NULL)       Error_("Error in function : malloc (main).", 1);
 
         tmp = ( tmp -> next );
-
-        memset( tmp -> incoming_request, 0, strlen( tmp -> incoming_request) );
-
 
     } while (1);
 
@@ -240,16 +233,6 @@ int list_request_handler( struct client_ * client_infos ){
 }
 
 
-int download_request_handler( struct client_ * client_infos ){
-
-    if ( start_download( ( client_infos -> pathname ), &( client_infos -> client_address ) ) == -1 )     return -1;
-
-    return 0;
-
-}
-
-
-
 
 
 
@@ -270,7 +253,7 @@ void * receptionist( void * client_infos ) {
 
     char            *tmp;                              int             request_type;
 
-    tmp =  strtok( ( my_client -> incoming_request ), "/");            request_type = atoi(tmp);
+    tmp =  strtok( ( my_client -> incoming_request ), "/" );            request_type = atoi( tmp );
 
     switch( request_type ) {
 
@@ -279,16 +262,16 @@ void * receptionist( void * client_infos ) {
             sprintf( ( my_client -> buffer ), "%ld", strlen(list) );
 
             if ( list_request_handler( my_client ) != 0 )                Error_("Error in function : list_request_handler (receptionist).", 1);
-            
+
             break;
 
         case GET:     /* GET (DOWNLOAD) request */
             
-            tmp = ( my_client -> buffer ) + strlen(tmp);                 memset( ( my_client -> buffer ), 0 , strlen( my_client -> buffer ) );
+            tmp = ( my_client -> incoming_request ) + strlen(tmp);       memset( ( my_client -> incoming_request ), 0 , MAXLINE ); 
 
             if ( sprintf( my_client -> pathname, "%s", tmp) == -1)       Error_("Error in function : sprintf (receptionist).", 1);
-            
-            if ( download_request_handler( my_client ) != 0 )            Error_("Error in function : download_request_handler (receptionist).", 1);
+
+            if ( start_download( ( my_client -> pathname ), &( my_client -> client_address ), my_client -> len ) == -1 )     Error_("Error in function : start download (receptionist).", 1);
 
             break;
 
