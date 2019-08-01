@@ -95,6 +95,16 @@ sw_slot*   get_sliding_window() {
     }
 
     window -> is_first = '1';
+    window -> sent_timestamp = malloc( sizeof( struct timespec) );
+    if ( window -> sent_timestamp == NULL ) {
+        printf("Error in function : malloc (get sliding window).");
+        return NULL;
+    }
+    window -> acked_timestamp = malloc( sizeof( struct timespec) );
+    if ( window -> acked_timestamp == NULL ) {
+        printf("Error in function : malloc (get sliding window).");
+        return NULL;
+    }
     window -> sequence_number = 0;
     window -> status = FREE;
 
@@ -111,6 +121,16 @@ sw_slot*   get_sliding_window() {
         tmp = ( tmp -> next );
 
         tmp -> is_first = '0';
+        window -> sent_timestamp = malloc( sizeof( struct timespec) );
+        if ( window -> sent_timestamp == NULL ) {
+            printf("Error in function : malloc (get sliding window).");
+            return NULL;
+        }
+        window -> acked_timestamp = malloc( sizeof( struct timespec) );
+        if ( window -> acked_timestamp == NULL ) {
+            printf("Error in function : malloc (get sliding window).");
+            return NULL;
+    }
         tmp -> sequence_number = i;
         tmp -> bytes = 0;
         tmp -> status = FREE;
@@ -178,8 +198,6 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
     int         ret,        filesize,       counter = 0;
 
     /*  Get the sliding window for this transfer occurrence. */
-
-    window = get_sliding_window();                                                      //returns a pointer to a linked circular list of sliding window's slots.
 
     sw_slot     *tmp =                  window;
 

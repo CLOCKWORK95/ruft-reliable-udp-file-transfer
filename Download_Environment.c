@@ -97,7 +97,7 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
 
     /* Validate memory area to contain a new block structure. */
     new_block = malloc( sizeof( block ) );
-    if (new_block == NULL) {
+    if ( new_block == NULL ) {
         printf(" \n Error in function : malloc");
         return -1;
     }
@@ -170,6 +170,8 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
 
         tmp -> my_block = new_block;
 
+        tmp -> sliding_window_slot_ = get_sliding_window();
+
         tmp -> next = malloc( sizeof( worker ) );
         if (tmp -> next == NULL) {
             printf("Error in function : malloc ( init new block).");
@@ -208,7 +210,7 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
 
     for ( int i = 0; i < MAX_WORKERS; i ++ ) {
 
-        ret = pthread_create( &( tmp -> time_wizard ), NULL, work, (void *) tmp );
+        ret = pthread_create( &( tmp -> time_wizard ), NULL, time_wizard, (void *) tmp );
         if ( ret == -1 ) {
             printf("Error in function: pthread_create (init_new_block).");
             return -1;
@@ -364,6 +366,13 @@ void * work ( void * _worker ) {
 
     block   * myblock = ( me -> my_block );
 
+    if ( me -> is_working == '0') {
+        printf("\n WORKER %d CREATED BUT TEMPORARILY PAUSED.\n ", me -> identifier ); fflush(stdout);
+        goto sleep;
+    } else{
+        printf("\n WORKER %d RUNNING FOR DOWNLOAD.\n ", me -> identifier ); fflush(stdout);
+    }
+
     redo:
 
     myblock -> BLTC ++;
@@ -374,6 +383,7 @@ void * work ( void * _worker ) {
         goto redo;
     }
 
+    sleep:
 
     me -> is_working = '0';
 
@@ -408,6 +418,7 @@ void * acknowledgment_keeper( void * _block ){
 
     sw_slot *sw_tmp;
 
+    printf("\n ACKNOWLEDGMENT KEEPER RUNNING FOR BLOCK MATCHED TO FILE : %s\n ", myblock -> filename ); fflush(stdout);
 
     do {
 
@@ -487,7 +498,20 @@ void * time_wizard( void * _worker ){
 
     sw_slot             *window = wrkr -> sliding_window_slot_;
 
-    struct timespec     *now;
+
+    struct timespec     *now = malloc( sizeof( struct timespec ) );
+    if (now == NULL)        Error_("Error in function : malloc ( time wizard).", 1);
+
+    if ( wrkr -> is_working == '0') {
+
+        printf("\n TIME WIZARD %d CREATED BUT TEMPORARILY PAUSED.\n ", wrkr -> identifier ); fflush(stdout);
+        pause();                    //wait for a SIGUSR to be awaken (as well as his matched worker thread).
+
+    } else{
+        printf("\n TIME WIZARD %d RUNNING.\n ", wrkr -> identifier );                        fflush(stdout);
+        pause();           //wait for (the other!) SIGUSR to be awaken (as the worker is ready to transmit).
+
+    }
 
     do {
 

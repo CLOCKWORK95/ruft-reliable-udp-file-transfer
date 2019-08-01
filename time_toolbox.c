@@ -5,7 +5,7 @@ struct timespec         beat = { 0, 70000000 };
 long                    TIMEOUT_INTERVAL = (long) 1000000000;
 
 
-int current_timestamp(struct timespec* time) {
+int current_timestamp( struct timespec* time ) {
     
 	time->tv_sec = 0;
 	time->tv_nsec = 0;
