@@ -173,9 +173,9 @@ rw_slot*   get_rcv_window() {
     The file has to be sent to the client_address through the block's socket specified in socket_descriptor.
     Reliable Data Transfer is implemented as a pipelining ' sliding window 'protocol, using ACKs and timout-retransmissions.
 */
-int reliable_file_forward( int identifier, int    socket_descriptor, struct sockaddr_in  *client_address , FILE  *buffer_cache , sw_slot   *window) {
+int reliable_file_forward( int identifier, int    socket_descriptor, struct sockaddr_in  *client_address, int len , char  *buffer_cache , sw_slot   *window) {
 
-    int         ret,    len,    filesize,   counter = 0;
+    int         ret,        filesize,       counter = 0;
 
     /*  Get the sliding window for this transfer occurrence. */
 
@@ -198,8 +198,11 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
         return -1;
     }
 
-    filesize =  strlen( (char *) buffer_cache );                                         //variable used to check if all file has been sent after transaction.
+    filesize =  strlen( buffer_cache );                                                 //variable used to check if all file has been sent after transaction.
 
+    printf(" Sending worker ID %d and file size %d to the client! (RDT step 1).", identifier, filesize ); 
+    fflush( stdout ); 
+    sleep(2);
     
     /* Temporarily block all signals to this thread. */
 
@@ -207,7 +210,9 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
     sigfillset( &set );
     sigprocmask( SIG_BLOCK, &set, NULL);
 
-    printf(" Sending worker id and file size to the client! (RDT step 1)."); fflush( stdout ); sleep(1);
+    printf(" Sending worker ID %d and file size %d to the client! (RDT step 1).", identifier, filesize ); 
+    fflush( stdout ); 
+    sleep(2);
 
     /*  Send worker identifier and total file size to the client, so that it could actually start (and finish!) this file download instance.  */
     sprintf( packet, "%d/%d/", identifier, filesize );

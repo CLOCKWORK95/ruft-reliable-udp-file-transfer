@@ -170,14 +170,14 @@ int main(int argc, char** argv) {
 /* This function implements the list request. */
 int list_request() {
 
-    int     ret,    len;
+    int     ret,            len = sizeof( servaddr );
 
     char    request[3],     answer[MAXLINE],     *list;
 
     sprintf( request, "0/");
 
     // Sending list request
-    ret = sendto(sockfd, (const char *) request, strlen(request), MSG_CONFIRM, (const struct sockaddr *) &servaddr,  sizeof(servaddr)); 
+    ret = sendto(sockfd, (const char *) request, MAXLINE, MSG_CONFIRM, (const struct sockaddr *) &servaddr,  sizeof(servaddr)); 
     if (ret <= 0) {
         printf("Error in function : sendto (list_request).");
         return -1;
@@ -222,19 +222,19 @@ int download_request() {
 
     /* Set the request packet's fields. */
 
-    sprintf( request, "1/");
+    printf(" Enter the file name here : ");                scanf( "%s", filename );
 
-    printf("Enter the file name here : ");                scanf( "%s", filename );
+    sprintf( request, "1/./server_directory/%s", filename );
 
-    sprintf( ( request + strlen( request ) ), "./server_directory/%s", filename );
+    printf(" Request content : %s\n\n", request); fflush(stdout);
 
     sprintf( ( infos -> pathname ), "./client_directory/%s", filename );
 
 
     // Sending get-request specifing the name of the file to download.
-    ret = sendto( sockfd, (const char *) request, strlen(request), MSG_CONFIRM, (const struct sockaddr *) &(servaddr),  sizeof(servaddr) ); 
+    ret = sendto( sockfd, (const char *) request, MAXLINE, MSG_CONFIRM, (const struct sockaddr *) &(servaddr),  sizeof(servaddr) ); 
     if (ret <= 0) {
-        printf("Error in function : sendto (download_request).");
+        printf("Error in function : sendto (download_request). errno = %d", errno );
         return -1;
     }
 
@@ -262,28 +262,38 @@ void * downloader( void * infos_ ){
 
     char                            rcv_buffer[MAXLINE];
 
-
+    printf("hello 1"); fflush(stdout); sleep(2);
     // Download File.
 
     infos -> rcv_wnd = get_rcv_window();
+
+    infos -> dwld_serv_len = sizeof( infos -> dwld_servaddr );
 
     /* Receive the file size and the identifier of server worker matched to this download instance. */
     ret = recvfrom( sockfd, (char *) rcv_buffer, MAXLINE,  MSG_WAITALL, (struct sockaddr *) &( infos -> dwld_servaddr ), &( infos -> dwld_serv_len ) ); 
     if (ret <= 0)       Error_("Error in function : recvfrom (downloader).", 1);
 
+    printf("hello 2, fucking rcv buffer content is the following : %s", rcv_buffer ); fflush(stdout); sleep(2);
 
     /* Initiate the exit-condition's values for the next cycle. */
-    char *idtf =          malloc( strlen( rcv_buffer ) );
+    char *idtf;
     idtf =                strtok( rcv_buffer, "/" );
     infos -> identifier = atoi( idtf );
 
-    char *filesz =        malloc( strlen( rcv_buffer + strlen( idtf ) ) );
+    printf("hello 3 Server Worker ID is %d", infos -> identifier ); fflush(stdout); sleep(2);
+
+    char *filesz;
     filesz =              strtok( NULL, "/" );
+
+    printf("hello 4.1 Server Worker file size is %s", filesz ); fflush(stdout); sleep(2);
+
     int filesize =        atoi( filesz );
+
+    printf("hello 4.2 Server Worker file size is %d", filesize ); fflush(stdout); sleep(2);
 
     memset( rcv_buffer, 0, MAXLINE);
 
-    printf( "here i am 3 (downloader)" ); fflush(stdout); sleep(5);
+    printf( "hello 5 " ); fflush(stdout); sleep(5);
 
     do{
 
@@ -369,7 +379,7 @@ void * writer( void * infos_ ){
 
     /* Create the new file in client's directory or truncate an existing one with the same pathname, to start download. */
     file_descriptor = open( ( infos -> pathname ), O_WRONLY | O_CREAT | O_TRUNC );  
-    if (file_descriptor == -1)      Error_("Error in function : open (wirter).", 1);
+    if (file_descriptor == -1)      Error_("Error in function : open (writer).", 1);
 
     do{
         /* Be ready to be awaken by SIGUSR2 occurrence. Go on pause. */

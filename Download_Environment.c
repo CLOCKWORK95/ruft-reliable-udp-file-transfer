@@ -35,7 +35,7 @@ typedef struct worker_{
 
     sw_slot                 *sliding_window_slot_;                      //Circular linked list of sliding window's slots, related to this worker instance.
 
-    struct worker_          *next;                               //Pointer to the next worker of the same block (NULL if this is the last worker).
+    struct worker_          *next;                                      //Pointer to the next worker of the same block (NULL if this is the last worker).
 
 }               worker;
 
@@ -53,7 +53,7 @@ typedef struct block_ {
 
     char                    *filename;                                  //Name of the file associated to this block.
 
-    FILE                    *buffer_cache;                              //Buffer cache containing the file to transmit.
+    char                    *buffer_cache;                              //Buffer cache containing the file to transmit.
 
     int                     server_sock_desc;                           //Block's (new) socket descriptor.
 
@@ -91,7 +91,7 @@ void * time_wizard( void * _worker);
 */
 int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *client_address , int len ){ 
 
-    int ret;    
+    int     ret,    fd,     filesize;    
 
     /* Validate memory area to contain a new block structure. */
     new_block = malloc( sizeof( block ) );
@@ -99,6 +99,27 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
         printf("Error in function : malloc");
         return -1;
     }
+
+
+    /* Open a new session on file pathname, and load the file in main memory to be used by this new block. */
+
+    printf(" Opening file %s", pathname); fflush(stdout);
+
+    fd = open( pathname, O_RDONLY );
+    
+    if ( fd == -1 ) {
+        printf("Error in function : open (init_new block) errno = %d.", errno );
+        return -1;
+    }
+
+    filesize = lseek( fd, 0, SEEK_END );
+
+    new_block -> buffer_cache = (char *) mmap( NULL , filesize, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0 );
+    if ( new_block -> buffer_cache == NULL ) {
+        printf("Error in function : mmap (init_new block).");
+        return -1;
+    }
+
 
     /*  Populate the block structure attributes. */
     
@@ -108,11 +129,6 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
         return -1;
     }
 
-    new_block -> buffer_cache = fopen( pathname, "r" );                                                   //open a (readonly) session on file and create the file stream.
-    if (new_block -> buffer_cache == NULL) {
-        printf("Error in function : fopen.");
-        return -1;
-    }
 
     new_block -> BLTC = (int) ( strlen( (char *) ( new_block -> buffer_cache ) ) / PACKET_SIZE  ) ;      //set the BLTC default value proportional to the file size.
 
@@ -312,7 +328,10 @@ void incoming_ack(){}                                                           
 
 
 
-        /*  THREADS' FUNCTIONS  */
+
+        /*   ****    ***     THREADS' FUNCTIONS     ***  ****   */
+
+        
 
 /*  
     This is block's worker-threads' function. 
@@ -335,7 +354,7 @@ void * work ( void * _worker ) {
 
     myblock -> BLTC ++;
 
-    ret = reliable_file_forward( (me -> identifier), ( me -> sockfd ), ( me -> client_addr ), ( me -> my_block-> buffer_cache ), ( me -> sliding_window_slot_ ) );
+    ret = reliable_file_forward( (me -> identifier), ( me -> sockfd ), ( me -> client_addr ), ( me -> len), ( myblock -> buffer_cache ), ( me -> sliding_window_slot_ ) );
     if (ret == -1) {
         printf("Error in function : reliable_data_trasnfer.");
         goto redo;

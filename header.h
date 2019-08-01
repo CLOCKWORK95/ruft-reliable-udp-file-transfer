@@ -14,6 +14,8 @@
 #include <netinet/in.h> 
 #include <dirent.h>
 #include <time.h>
+#include <sys/mman.h>
+#include <errno.h>
 
 #define Error_(x,y)     { puts(x); exit(y); }
 #define MAXLINE 1024 

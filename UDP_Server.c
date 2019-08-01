@@ -30,7 +30,7 @@ struct client_ {
 
     char                        incoming_request[MAXLINE];
 
-    char                        pathname[MAXLINE];
+    char                        *pathname;
 
     char                        buffer[MAXLINE];
 
@@ -98,7 +98,7 @@ int main(int argc, char ** argv) {
     servaddr.sin_port        =    htons(PORT);               // Well-known RUFT Server port.
       
     /* Bind the socket with the server address */ 
-    if ( bind(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr)) < 0 ) { 
+    if ( bind(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr) ) < 0 ) { 
         perror("bind failed"); 
         exit(EXIT_FAILURE); 
     } 
@@ -114,12 +114,17 @@ int main(int argc, char ** argv) {
 
     download_environment -> workers = malloc( sizeof( worker ) );        
     if ( download_environment -> workers == NULL )       Error_("Error in function : malloc (main.)", 1);
+
+    download_environment -> filename = NULL;
     
     struct client_      *tmp = clients;
 
 
+
     do{
         /* Within this cycle, RUFT Server receives all types of requests from clients, and creates matched-threads to serve each one of them. */
+
+        tmp -> len = sizeof( tmp -> client_address );
 
         printf("waiting for request messages...\n\n");
 
@@ -127,12 +132,12 @@ int main(int argc, char ** argv) {
 
         ret = recvfrom( sockfd, (char *) ( tmp -> incoming_request ), MAXLINE, MSG_WAITALL, ( struct sockaddr *) &( tmp -> client_address ), &( tmp -> len ) ); 
         if ( ret == -1 ) {
-            printf("Error in function : recvfrom() (main).");
+            printf("Error in function : recvfrom() (main). errno = %d", errno );
             return -1;
         }
 
         /* Create receptionist thread which starts the serving-job */
-        if ( pthread_create( &( tmp -> receptionist), NULL, receptionist, (void *) clients ) == -1 )       Error_("Error in function : pthread_create (main).", 1);
+        if ( pthread_create( &( tmp -> receptionist), NULL, receptionist, (void *) tmp ) == -1 )       Error_("Error in function : pthread_create (main).", 1);
         
         tmp -> next = malloc( sizeof( struct client_ ) );
         if ( tmp -> next == NULL)       Error_("Error in function : malloc (main).", 1);
@@ -267,9 +272,13 @@ void * receptionist( void * client_infos ) {
 
         case GET:     /* GET (DOWNLOAD) request */
             
-            tmp = ( my_client -> incoming_request ) + strlen(tmp);       memset( ( my_client -> incoming_request ), 0 , MAXLINE ); 
+            tmp = ( my_client -> incoming_request ) + (strlen(tmp) + 1 );       
 
-            if ( sprintf( my_client -> pathname, "%s", tmp) == -1)       Error_("Error in function : sprintf (receptionist).", 1);
+            printf(" pathname received is : %s\n\n", tmp ); fflush(stdout);
+
+            my_client -> pathname = strtok( tmp, "-" );
+
+            //if ( sprintf( my_client -> pathname, "%s", tmp) == -1)       Error_("Error in function : sprintf (receptionist).", 1);
 
             if ( start_download( ( my_client -> pathname ), &( my_client -> client_address ), my_client -> len ) == -1 )     Error_("Error in function : start download (receptionist).", 1);
 
