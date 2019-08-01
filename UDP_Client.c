@@ -124,7 +124,7 @@ int main(int argc, char** argv) {
         case LIST:     
 
             list_request();
-            printf("\n\nPress a button to proceed...");
+            printf("\n\n Press a button to proceed...");
           
             scanf("%c", &c);
             while( getchar() != '\n'){};
@@ -133,7 +133,7 @@ int main(int argc, char** argv) {
         case GET:
 
             download_request();
-            printf("\n\nFile is downlading on the background from RUFT Server. Press a button to proceed...");
+            printf("\n\n File is downlading on the background from RUFT Server.\n Press a button to proceed...");
 
             scanf("%c", &c);
             while( getchar() != '\n'){};

@@ -91,24 +91,24 @@ void * time_wizard( void * _worker);
 */
 int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *client_address , int len ){ 
 
+    printf(" :: ALLOCATE NEW BLOCK FUNCTION :: \n");
+
     int     ret,    fd,     filesize;    
 
     /* Validate memory area to contain a new block structure. */
     new_block = malloc( sizeof( block ) );
     if (new_block == NULL) {
-        printf("Error in function : malloc");
+        printf(" \n Error in function : malloc");
         return -1;
     }
 
 
     /* Open a new session on file pathname, and load the file in main memory to be used by this new block. */
 
-    printf(" Opening file %s", pathname); fflush(stdout);
-
     fd = open( pathname, O_RDONLY );
-    
+
     if ( fd == -1 ) {
-        printf("Error in function : open (init_new block) errno = %d.", errno );
+        printf(" \n Error in function : open (init_new block) errno = %d.", errno );
         return -1;
     }
 
@@ -116,27 +116,39 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
 
     new_block -> buffer_cache = (char *) mmap( NULL , filesize, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0 );
     if ( new_block -> buffer_cache == NULL ) {
-        printf("Error in function : mmap (init_new block).");
+        printf(" \n Error in function : mmap (init_new block).");
         return -1;
     }
 
+    printf("\n Opened session on file %s.\n File charged on block's cache.\n", pathname); fflush(stdout);
 
     /*  Populate the block structure attributes. */
+
+    new_block -> filename = malloc( sizeof(char) * ( strlen( pathname ) + 2 ) );
+    if (new_block -> filename == NULL) {
+        printf(" \n Error in function : malloc (init_new block).");
+        return -1;
+    }
     
-    ret = sprintf( (char *) ( new_block -> filename ), "%s", pathname );                                      //match a file path.
+    ret = sprintf( (char *) ( new_block -> filename ), "%s", pathname );                                //match a file path.
     if (ret == -1) {
-        printf("Error in function : sprintf.");
+        printf("\n Error in function : sprintf.");
         return -1;
     }
 
+    printf("\n Block's fields population.\n Filename : %s.\n ", new_block -> filename ); fflush(stdout);
 
-    new_block -> BLTC = (int) ( strlen( (char *) ( new_block -> buffer_cache ) ) / PACKET_SIZE  ) ;      //set the BLTC default value proportional to the file size.
+    new_block -> BLTC = (int) ( strlen( new_block -> buffer_cache ) / PACKET_SIZE  ) ;      //set the BLTC default value proportional to the file size.
+
+    printf("\n BLTC init value : %d.\n ", new_block -> BLTC ); fflush(stdout);
 
     
     if ( ( ( new_block -> server_sock_desc ) = socket( AF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {                //creating block's socket file descriptor 
-        perror("socket creation failed (init new block)."); 
+        perror("\n socket creation failed (init new block)."); 
         return -1; 
     }   
+
+    printf("\n Socket N° : %d.\n ", new_block -> server_sock_desc ); fflush(stdout);
 
     new_block -> workers = malloc( sizeof( worker ) );                                                   //validate memory area for block's workers.
     if ( new_block -> workers == NULL ) {
@@ -146,13 +158,7 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
 
     worker *tmp = new_block -> workers;                                                     
 
-    for ( int i = 0; i < MAX_WORKERS; i ++) {                                                            //validate memory area for all workers.
-
-        tmp = malloc( sizeof( worker ) );
-        if (tmp == NULL) {
-            printf("Error in function : malloc ( init new block).");
-            return -1;
-        }
+    for ( int i = 0; i < MAX_WORKERS; i ++ ) {                                                            //validate memory area for all workers.
 
         //populate worker's attributes.
 
@@ -164,10 +170,18 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
 
         tmp -> my_block = new_block;
 
+        tmp -> next = malloc( sizeof( worker ) );
+        if (tmp -> next == NULL) {
+            printf("Error in function : malloc ( init new block).");
+            return -1;
+        }
+
         if ( i != MAX_WORKERS -1)   tmp = ( tmp -> next );
         else                        tmp -> next = ( new_block -> workers );                 //this makes a circular linked list of workers.
         
     }
+
+    printf("\n Initialized workers' structures.\n Set up the first worker to download file. "); fflush(stdout);
 
 
     /*  Generate the thread-pool and activate the new thread to serve the request.  */
