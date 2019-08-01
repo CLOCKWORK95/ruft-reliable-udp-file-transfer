@@ -59,7 +59,7 @@ typedef struct block_ {
 
     worker                  *workers;                                   //Array of block's workers. 
 
-    pthread_t               ack_dmplx_thread;                           //Acknowledgments demultiplexer thread's TID.
+    pthread_t               ack_keeper;                                 //Acknowledgments keeper and demultiplexer thread's TID.
 
     struct block_           *next;                                      //Pointer to next block structure.
 
@@ -75,7 +75,7 @@ typedef struct block_ {
 void * work( void* _worker );
 
 
-void * acknowledgment_demultiplexer( void * _block );
+void * acknowledgment_keeper( void * _block );
 
 
 void * time_wizard( void * _worker);
@@ -89,11 +89,11 @@ void * time_wizard( void * _worker);
     and a new operating socket. This function activates a first thread, serving the request the function has been called to.  
     Returns : 0 on success, -1 on Error.
 */
-int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *client_address ){ 
+int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *client_address , int len ){ 
 
     int ret;    
 
-    //validate memory area to contain a new block structure.
+    /* Validate memory area to contain a new block structure. */
     new_block = malloc( sizeof( block ) );
     if (new_block == NULL) {
         printf("Error in function : malloc");
@@ -117,13 +117,12 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
     new_block -> BLTC = (int) ( strlen( (char *) ( new_block -> buffer_cache ) ) / PACKET_SIZE  ) ;      //set the BLTC default value proportional to the file size.
 
     
-    if ( ( ( new_block -> server_sock_desc ) = socket( AF_INET, SOCK_DGRAM, 0) ) < 0 ) {                 //creating block's socket file descriptor 
+    if ( ( ( new_block -> server_sock_desc ) = socket( AF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {                //creating block's socket file descriptor 
         perror("socket creation failed (init new block)."); 
         return -1; 
-    }
+    }   
 
-
-    new_block -> workers = malloc( sizeof( worker ) );                                                  //validate memory area for block's workers.
+    new_block -> workers = malloc( sizeof( worker ) );                                                   //validate memory area for block's workers.
     if ( new_block -> workers == NULL ) {
         printf("Error in function : malloc.");
         return -1;
@@ -131,7 +130,7 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
 
     worker *tmp = new_block -> workers;                                                     
 
-    for ( int i = 0; i < MAX_WORKERS; i ++) {                                                           //validate memory area for all workers.
+    for ( int i = 0; i < MAX_WORKERS; i ++) {                                                            //validate memory area for all workers.
 
         tmp = malloc( sizeof( worker ) );
         if (tmp == NULL) {
@@ -145,7 +144,7 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
 
         tmp -> is_working = '0';
 
-        tmp -> sockfd = new_block -> server_sock_desc;
+        tmp -> sockfd = ( new_block -> server_sock_desc );
 
         tmp -> my_block = new_block;
 
@@ -163,10 +162,12 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
 
     tmp -> client_addr = client_address;
 
+    tmp -> len = len;
+
 
     /*  Create the Acknowledgment Keeper Thread, to handle acknowledgments throughout the block. */
 
-    ret = pthread_create( &( new_block -> ack_dmplx_thread ), NULL, acknowledgment_demultiplexer, (void *) new_block );
+    ret = pthread_create( &( new_block -> ack_keeper ), NULL, acknowledgment_keeper, (void *) new_block );
     if (ret ==-1) {
         printf("Error in function : pthread_create(init_new_block).");
         return -1;
@@ -226,7 +227,7 @@ int start_download( char *pathname , struct sockaddr_in *client_address, int len
         printf( "\n\n Allocating a new block for file %s in Server's Download Environment (this is the first block).", pathname ); 
         fflush( stdout); 
 
-        ret = init_new_block( tmp_block , pathname, client_address);
+        ret = init_new_block( tmp_block , pathname, client_address, len );
         if (ret == -1) {
             printf("Error in function: init_new_block (start_download).");
             return -1;
@@ -246,7 +247,7 @@ int start_download( char *pathname , struct sockaddr_in *client_address, int len
                of download environment, then the first paused worker of that block is chosen to
                serve this request. */
 
-            worker *tmp_worker = tmp_block -> workers;
+            worker *tmp_worker = ( tmp_block -> workers );
 
             do {
 
@@ -284,9 +285,10 @@ int start_download( char *pathname , struct sockaddr_in *client_address, int len
         A new block related to the requested file is going to be allocated, so that this request can be
         handled. */
 
-    printf("\n\n Allocating a new block for file %s in Server's Download Environment...", pathname); fflush( stdout); sleep(1);
+    printf( "\n\n Allocating a new block for file %s in Server's Download Environment...", pathname ); 
+    fflush( stdout );
 
-    ret = init_new_block( last_block -> next, pathname, client_address);
+    ret = init_new_block( last_block -> next, pathname, client_address , len );
     if (ret == -1) {
         printf("Error in function: init_new_block (start_download).");
         return -1;
@@ -357,7 +359,7 @@ void * work ( void * _worker ) {
     each ACK is directed to a specific block's worker, and further to a specific slot of its sliding window.
     This thread is responsible for notifying workers about the received ACKs and for awakening a worker waiting for sliding his window on.
 */
-void * acknowledgment_demultiplexer( void * _block ){
+void * acknowledgment_keeper( void * _block ){
 
 
     int     ret,    len;
@@ -378,7 +380,7 @@ void * acknowledgment_demultiplexer( void * _block ){
 
         /*  Receive a packet (acknowledgments) from related block's socket.  */
 
-        struct sockaddr     client_address;
+        struct sockaddr_in     client_address;
 
         memset( buffer, 0, sizeof( buffer ) );
 
@@ -387,10 +389,10 @@ void * acknowledgment_demultiplexer( void * _block ){
 
         /*  Parse the packet to keep separated the identifier and sequence number fields.  */
 
-        ret = sprintf( id, "%s", strtok( buffer, "/" ) );
+        id = strtok( buffer, "/" );
         if (ret == -1)      Error_("Error in function sprintf (acknowledgment_demultiplexer).", 1);
 
-        ret = sprintf( seq_num, "%s", strtok( NULL, "/" ) );
+        seq_num = strtok( NULL, "/" ) ;
         if (ret == -1)      Error_("Error in function sprintf (acknowledgment_demultiplexer).", 1);
 
 
@@ -413,16 +415,20 @@ void * acknowledgment_demultiplexer( void * _block ){
         }
 
 
-        /*  Update worker window's slot's status from SENT to ACKED. 
-            If the slot is the first of the sliding window, forward a SIGUSR2 signal to worker-thread to get the window sliding on. */
+        {
+            /*  THIS IS A CRITICAL SECTION FOR ACCESS ON THE SLIDING WINDOW (shared by ack-keeper thread and the relative worker).
+                Update worker window's slot's status from SENT to ACKED. 
+                If the slot is the first of the sliding window, forward a SIGUSR2 signal to worker-thread to get the window sliding on. */
 
-        if ( ( sw_tmp -> status ) != SENT )     Error_("Error in acknowledgment handling : unexpected window's status.", 1);
+            if ( ( sw_tmp -> status ) != SENT )     Error_("Error in acknowledgment handling : unexpected window's status.", 1);
 
-        sw_tmp -> status = ACKED;
+            sw_tmp -> status = ACKED;
 
-        current_timestamp( sw_tmp -> acked_timestamp );
+            current_timestamp( sw_tmp -> acked_timestamp );
 
-        if ( ( sw_tmp -> is_first ) == '1' )    pthread_kill( ( w_tmp -> tid ), SIGUSR2 );          
+            if ( ( sw_tmp -> is_first ) == '1' )    pthread_kill( ( w_tmp -> tid ), SIGUSR2 ); 
+
+        }         
 
 
     } while (1);
