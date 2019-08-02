@@ -262,46 +262,48 @@ void * downloader( void * infos_ ){
 
     char                            rcv_buffer[MAXLINE];
 
-    printf("hello 1"); fflush(stdout); sleep(2);
+
     // Download File.
+
+    printf("\n PREPEARING TO DOWNLOAD...\n Getting informations about the downloading file...");        fflush(stdout);
 
     infos -> rcv_wnd = get_rcv_window();
 
-    infos -> dwld_serv_len = sizeof( infos -> dwld_servaddr );
+    infos -> dwld_serv_len = sizeof( struct sockaddr_in );
 
     /* Receive the file size and the identifier of server worker matched to this download instance. */
     ret = recvfrom( sockfd, (char *) rcv_buffer, MAXLINE,  MSG_WAITALL, (struct sockaddr *) &( infos -> dwld_servaddr ), &( infos -> dwld_serv_len ) ); 
     if (ret <= 0)       Error_("Error in function : recvfrom (downloader).", 1);
 
-    printf("hello 2, fucking rcv buffer content is the following : %s", rcv_buffer ); fflush(stdout); sleep(2);
+    printf("\n RECEIVED infos : %s", rcv_buffer );                                                      fflush(stdout); 
 
     /* Initiate the exit-condition's values for the next cycle. */
     char *idtf;
     idtf =                strtok( rcv_buffer, "/" );
     infos -> identifier = atoi( idtf );
 
-    printf("hello 3 Server Worker ID is %d", infos -> identifier ); fflush(stdout); sleep(2);
+    printf("\n - WORKER ID : %d", infos -> identifier );                                                fflush(stdout); 
 
     char *filesz;
     filesz =              strtok( NULL, "/" );
-
-    printf("hello 4.1 Server Worker file size is %s", filesz ); fflush(stdout); sleep(2);
-
     int filesize =        atoi( filesz );
 
-    printf("hello 4.2 Server Worker file size is %d", filesize ); fflush(stdout); sleep(2);
+    printf("\n - SIZE : %d", filesize );                                                                fflush(stdout); 
 
     memset( rcv_buffer, 0, MAXLINE);
 
-    printf( "hello 5 " ); fflush(stdout); sleep(5);
-
     do{
 
-        ret = recvfrom( sockfd, (char *) rcv_buffer, MAXLINE,  MSG_WAITALL, (struct sockaddr *) &( infos -> dwld_servaddr ), &( infos -> dwld_serv_len ) ); 
+        printf("\n  DOWNLOAD IN PROGRESS... ");                                                         fflush(stdout);
+
+        ret = recvfrom( sockfd, (char *) rcv_buffer, MAXLINE,  MSG_WAITALL, 
+                        (struct sockaddr *) &( infos -> dwld_servaddr ), &( infos -> dwld_serv_len ) ); 
         if (ret <= 0)       Error_("Error in function : recvfrom (downloader).", 1);
 
-        int identifier = atoi( ( strtok( rcv_buffer, "/") ) );
+        char    *idtf;                          idtf = strtok( rcv_buffer, "/");
+        int     identifier = atoi( idtf );
 
+        
         if ( identifier == ( infos -> identifier ) ) {
 
             /*  THIS IS A CRITIAL SECTION FOR RECEIVING WINDOWS ACCESS ON WRITING. 
@@ -309,9 +311,13 @@ void * downloader( void * infos_ ){
 
             if ( pthread_mutex_lock( &rcv_window_mutex ) == -1 )        Error_("Error in function : pthread_mutex_lock (downloader).", 1);
 
-            rw_slot *wnd_tmp = ( infos -> rcv_wnd );
+            rw_slot     *wnd_tmp = ( infos -> rcv_wnd );
 
-            int sequence_number = atoi( strtok( NULL, "/") );
+            char        *sn = strtok( NULL, "/" );
+
+            int         sequence_number = atoi( sn );
+
+            printf("\n --> Arrived packet with sequence number : %d .", sequence_number);               fflush(stdout);
 
             for (int i = 0; i < WINDOW_SIZE; i++) {
 
@@ -321,18 +327,28 @@ void * downloader( void * infos_ ){
 
                     sprintf( ( infos -> ACK ), "%d/%d/", identifier, sequence_number );
 
-                    ret = sendto(sockfd, (const char *) ( infos -> ACK ), strlen( infos -> ACK ), MSG_CONFIRM, 
-                                 (const struct sockaddr *) &( infos -> dwld_servaddr ),  sizeof( infos -> dwld_serv_len )); 
-                    if (ret <= 0)       Error_("Error in function : sendto (downloader).", 1);
+                    printf(" SENDING ACK : %s", infos -> ACK);
+
+                    ret = sendto( sockfd, (const char *) ( infos -> ACK ), MAXLINE, MSG_CONFIRM, 
+                                 (const struct sockaddr *) &( infos -> dwld_servaddr ), infos -> dwld_serv_len ); 
+                    if (ret <= 0) {
+                        printf("\n Error in function : sendto (downloader). errno = %d ", errno );
+                        exit(-1);
+                    }
 
                     /* Update rcv_window's slot status.  */
                     wnd_tmp -> status = RECEIVED;
 
-                    if ( sprintf( ( wnd_tmp -> packet ), "%s", ( rcv_buffer + HEADER_SIZE ) ) == -1 )        Error_( "Error in function : sprintf (downloader).", 1);
+                    wnd_tmp -> packet = malloc( sizeof(char) * MAXLINE );
+                    if (wnd_tmp -> packet == NULL)      Error_( "Error in function : malloc (downloader).", 1);
+                    if ( sprintf( ( wnd_tmp -> packet ), "%s", ( rcv_buffer + ( strlen(idtf) + strlen(sn) + 2 ) ) ) == -1 )        
+                                                                         Error_( "Error in function : sprintf (downloader).", 1);
 
                     counter += strlen( wnd_tmp -> packet);
 
                     if ( ( wnd_tmp -> is_first ) == '1' ) {
+
+                        printf( "\n SENDING SIGNAL TO WRITER FOR PACKET %d", sequence_number );      fflush(stdout); 
 
                         /* If this is the first slot of the window, then alert the writer about it (SIGUSR2) so that it could slide the rcv_window on. */
 
@@ -378,8 +394,11 @@ void * writer( void * infos_ ){
     struct file_download_infos                  *infos = ( struct file_download_infos * ) infos_;
 
     /* Create the new file in client's directory or truncate an existing one with the same pathname, to start download. */
-    file_descriptor = open( ( infos -> pathname ), O_WRONLY | O_CREAT | O_TRUNC );  
-    if (file_descriptor == -1)      Error_("Error in function : open (writer).", 1);
+    file_descriptor = open( ( infos -> pathname ), O_RDWR | O_CREAT | O_TRUNC, 0660 );  
+    if (file_descriptor == -1) {
+        printf("\n Error in function : open (writer). errno = %d", errno);
+        pthread_exit(NULL);
+    }
 
     do{
         /* Be ready to be awaken by SIGUSR2 occurrence. Go on pause. */
@@ -390,7 +409,7 @@ void * writer( void * infos_ ){
         /* Temporarily block SIGUSR2 signal occurrences. */
         sigprocmask( SIG_BLOCK, &set, NULL );
 
-        printf( "here i am awaked (writer)" ); sleep(1);
+        printf( "\n WRITER AWAKED" );                                   fflush(stdout);
 
         {   
             /*  THIS IS A CRITIAL SECTION FOR RECEIVING WINDOWS ACCESS ON WRITING. 
@@ -403,15 +422,22 @@ void * writer( void * infos_ ){
             rw_slot      *curr_first   = ( infos -> rcv_wnd );
 
             while ( wnd_tmp -> status == RECEIVED ) {
-                
+
+                lseek( file_descriptor, 0, SEEK_END );
+
                 /* Write the packet within the new file in client's directory. */
-                ret = write( file_descriptor, ( wnd_tmp -> packet ), PACKET_SIZE );
+                ret = write( file_descriptor, ( wnd_tmp -> packet ), strlen( wnd_tmp -> packet  ) );
                 if ( ret == -1)         Error_( "Error in function : write (thread writer).", 1);
+
+                printf( "\n Packet %d content has been written on file %s. %d bytes written .", 
+                                            ( wnd_tmp -> sequence_number ), ( infos -> pathname ), ret );            fflush(stdout);
+                
 
                 counter ++;
 
                 wnd_tmp = ( wnd_tmp -> next );
-
+                
+            
             }
 
             
@@ -420,8 +446,8 @@ void * writer( void * infos_ ){
                 /* Slide the receiving window on. */
 
                 ( curr_first -> sequence_number ) += WINDOW_SIZE;
-                ( curr_first -> status ) == WAITING;
-                memset( ( curr_first -> packet ), 0, PACKET_SIZE );
+                ( curr_first -> status ) = WAITING;
+                memset( ( curr_first -> packet ), 0, sizeof( curr_first -> packet ) );
                 curr_first -> is_first = '0';
 
                 curr_first -> next -> is_first = '1';

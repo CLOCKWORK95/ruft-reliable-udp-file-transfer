@@ -106,6 +106,7 @@ sw_slot*   get_sliding_window() {
         return NULL;
     }
     window -> sequence_number = 0;
+    window -> bytes = 0;
     window -> status = FREE;
 
     sw_slot * tmp = window;
@@ -130,7 +131,7 @@ sw_slot*   get_sliding_window() {
         if ( window -> acked_timestamp == NULL ) {
             printf("Error in function : malloc (get sliding window).");
             return NULL;
-    }
+        }
         tmp -> sequence_number = i;
         tmp -> bytes = 0;
         tmp -> status = FREE;
@@ -171,7 +172,7 @@ rw_slot*   get_rcv_window() {
         tmp = ( tmp -> next );
 
         tmp -> sequence_number = i;
-        window -> is_first = '0';
+        tmp -> is_first = '0';
         tmp -> status = WAITING;
 
     }
@@ -193,9 +194,10 @@ rw_slot*   get_rcv_window() {
     The file has to be sent to the client_address through the block's socket specified in socket_descriptor.
     Reliable Data Transfer is implemented as a pipelining ' sliding window 'protocol, using ACKs and timout-retransmissions.
 */
-int reliable_file_forward( int identifier, int    socket_descriptor, struct sockaddr_in  *client_address, int len , char  *buffer_cache , sw_slot   *window) {
+int reliable_file_forward( int identifier, int    socket_descriptor, struct sockaddr_in  *client_address, int len , 
+                           char  *buffer_cache , sw_slot   *window, pthread_mutex_t   *mutex ) {
 
-    int         ret,        filesize,       counter = 0;
+    int         ret,        filesize,       counter = 0,         endfile = 0;
 
     /*  Get the sliding window for this transfer occurrence. */
 
@@ -204,101 +206,123 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
     sw_slot     *first_free =           window;
 
 
-    char        *packet = malloc( HEADER_SIZE + PACKET_SIZE );                            
+    char        *packet = malloc( sizeof(char) * MAXLINE );                            
     if (packet == NULL) {
         printf("Error in function : malloc (reliable data transfer).");
         return -1;
     }
 
-    char        *packet_header = malloc ( HEADER_SIZE );
+    char        *packet_header = malloc ( sizeof(char) * HEADER_SIZE );
     if (packet_header == NULL) {
         printf("Error in function : malloc (reliable data transfer).");
         return -1;
     }
 
-    filesize =  strlen( buffer_cache );                                                 //variable used to check if all file has been sent after transaction.
+    char        *packet_content = malloc ( sizeof(char) * PACKET_SIZE );
+    if (packet_content == NULL) {
+        printf("Error in function : malloc (reliable data transfer).");
+        return -1;
+    }
 
-    printf(" Sending worker ID %d and file size %d to the client! (RDT step 1).", identifier, filesize ); 
-    fflush( stdout ); 
-    sleep(2);
+    filesize =  strlen( buffer_cache );                                                 //variable used to check if all file has been sent after transaction.
     
+
     /* Temporarily block all signals to this thread. */
 
     sigset_t set;
     sigfillset( &set );
     sigprocmask( SIG_BLOCK, &set, NULL);
 
-    printf(" Sending worker ID %d and file size %d to the client! (RDT step 1).", identifier, filesize ); 
-    fflush( stdout ); 
-    sleep(2);
+    printf("\n Sending Download informations to the client..." ); fflush( stdout ); 
 
     /*  Send worker identifier and total file size to the client, so that it could actually start (and finish!) this file download instance.  */
     sprintf( packet, "%d/%d/", identifier, filesize );
-    ret = sendto( socket_descriptor, (const char *) packet, strlen(packet), MSG_CONFIRM, (const struct sockaddr *) &client_address, sizeof( client_address ) ); 
+
+    printf("\n INFO PCKT : %s", packet );
+
+    ret = sendto( socket_descriptor, (const char *) packet, MAXLINE, MSG_CONFIRM, (const struct sockaddr *) client_address, len ); 
     if (ret == -1) {
-        printf("Error in function sendto (reliable_file_transfer).");
+        printf("\n Error in function sendto (reliable_file_transfer). errno = %d\n", errno );
         return -1;
     }
-    
 
     do {
 
+        if ( endfile == filesize )   goto stop;
+        
+        pthread_mutex_lock( mutex );
 
-        while ( ( tmp -> status ) == FREE ) {
+        printf("\n DOWNLOAD IN PROGRESS...");
+
+        while ( ( tmp -> status ) == FREE && ( endfile < filesize ) ) {
 
             /*  Populate packet's contents ( worker identifier, sequence number and related chunck of file bytes). */
 
             memset( packet, 0, sizeof( packet ) );
 
-            ret = sprintf( packet, "%d/", identifier );                          
+            ret = sprintf( packet_header, "%d/%d/", identifier , ( tmp -> sequence_number ) );                          
             if (ret == -1) {
                 printf("Error in function: sprintf (reliable_file_transfer).");
                 return -1;
             }
 
-            ret = sprintf( ( packet + strlen( packet ) ), "%d/", ( tmp -> sequence_number ) );
-            if (ret == -1) {
-                printf("Error in function: sprintf (reliable_file_transfer).");
-                return -1;
-            }
-
-            ret = sprintf( packet_header, "%s", packet );                                            //write the actual header on header packet string.
+            ret = snprintf( packet_content, ( PACKET_SIZE + 1 ), "%s", buffer_cache + ( PACKET_SIZE * ( tmp -> sequence_number ) ) );                                            //write the actual header on header packet string.
             if (ret == -1) {
                 printf("Error in function : sprintf (reliable data transfer).");
                 return -1;
             }
 
-            ret = snprintf( ( packet + strlen( packet ) ), PACKET_SIZE, "%s", (char *) buffer_cache + ( PACKET_SIZE * ( tmp -> sequence_number ) ) );
+            ret = sprintf( packet ,"%s", packet_header );
             if (ret == -1) {
-                printf("Error in function : snprintf (reliable data transfer).");
+                printf("Error in function : sprintf (reliable data transfer).");
+                return -1;
+            }
+            ret = sprintf( packet + strlen(packet) ,"%s", packet_content );
+            if (ret == -1) {
+                printf("Error in function : sprintf (reliable data transfer).");
                 return -1;
             }
 
 
-            tmp -> packet = packet;                                                                 //temporarily write the packet on its sliding window's slot.
+            tmp -> packet = malloc( sizeof(char) * sizeof(packet) );                              //temporarily write the packet on its sliding window's slot.
+            if ( tmp -> packet == NULL ) {
+                printf(" Error in function : malloc (reliable file forward).");
+                return -1;
+            }
+            sprintf( tmp -> packet, "%s", packet );
 
-            tmp -> timeout_interval = TIMEOUT_INTERVAL;                                             //set the timeout interval for retransmission.
+
+            tmp -> timeout_interval = TIMEOUT_INTERVAL;                                           //set the timeout interval for retransmission.
 
 
-            /*  Send the packet to the client through the block's socket */
-
-            ret = sendto( socket_descriptor, (const char *) packet, strlen(packet), MSG_CONFIRM, (const struct sockaddr *) &client_address, sizeof( client_address ) ); 
+            ret = sendto( socket_descriptor, (const char *) packet, MAXLINE, MSG_CONFIRM, 
+                            (const struct sockaddr *) client_address, len ); 
             if (ret == -1) {
-                printf("Error in function sendto (reliable_file_transfer).");
+                printf("Error in function sendto (reliable_file_transfer). errno = %d ", errno );
                 return -1;
             }
 
-            current_timestamp( tmp -> sent_timestamp );                                               //set packet's sent-timestamp.
+            printf("\n SENT PACKET %s with content size of %ld \n", packet_header, strlen(packet_content) );
 
-            tmp -> bytes += strlen( packet + strlen( packet_header ) );                               //set slot's bytes value with the precise number of file bytes sent.
             
-            tmp -> status = SENT;                                                                     //update sliding window's state.
+
+            //current_timestamp( tmp -> sent_timestamp );                                         //set packet's sent-timestamp.
+
+            tmp -> bytes += strlen( packet_content );                                             //set slot's bytes value with the precise number of file bytes sent.
+            
+            tmp -> status = SENT;                                                                 //update sliding window's state.
 
             tmp = ( tmp-> next );
 
+            endfile += strlen( packet_content );  
+
+            if ( strlen( packet_content ) < ( PACKET_SIZE ) )     break;                        //file-is-over condition : all bytes sent.
+
         }
 
-        
+        pthread_mutex_unlock( mutex );
+
+        stop: 
         /*  Here thread is going on pause until the first window's slot's state is set to ACKED.
             Pause state expects a signal to let the thread being awaken. 
             Signal expected is SIGUSR2, forwarded by the ACK-Thread of the block and used to 
@@ -307,8 +331,12 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
         sigemptyset( &set );
         sigaddset( &set, SIGUSR2);
         sigprocmask( SIG_UNBLOCK, &set, NULL);
-        
+
         pause();
+
+        printf("\n WORKER AWAKEN, SLIDING THE WINDOW ON...");
+
+        pthread_mutex_lock( mutex );
 
         /*  Temporarily block all signals to this thread.  */
 
@@ -319,12 +347,16 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
 
         first_free = tmp;
 
+        while(tmp->status != ACKED && tmp->is_first != '1'){
+            tmp = tmp ->next;
+        }
+
         while ( ( tmp -> status ) == ACKED ) {
 
             tmp -> status = FREE;                                                //reset slot's status to FREE, to be reused by next packets.                                         
 
             counter += ( tmp -> bytes );                                         //update counter value with acknowledged bytes of this slot.
-
+            printf("\n tmp->bytes=%d  counter=%d", tmp->bytes,counter);fflush(stdout);
             tmp -> bytes = 0;                                                    //reset slot's bytes to 0, to be reused by next packets.
 
             tmp -> is_first = '0';                                               //set the is_first flag to '0' : this slot is becoming the last one of the window.
@@ -344,10 +376,19 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
 
         tmp = first_free;
 
+        printf("\n WINDOW SLIDED ON.");         fflush(stdout);
+
+        pthread_mutex_trylock( mutex );
+
+        pthread_mutex_unlock( mutex );
+
+        printf( "counter = %d - filesize = %d", counter, filesize);     fflush(stdout);
+
  
 
     } while( counter < filesize );
 
+    printf("\n TRANSMISSION COMPLETE.");    fflush(stdout);
 
     return counter;
 

@@ -17,6 +17,8 @@ struct block_;
 */
 typedef struct worker_{
 
+    pthread_mutex_t         s_window_mutex;
+
     pthread_t               time_wizard;                                //Thread Identifier of this worker's Time_Wizard (who handles timeout-retransmission).
 
     int                     identifier;                                 //Unique identifier of the worker of a block, to receive ACKs.
@@ -161,6 +163,8 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
     for ( int i = 0; i < MAX_WORKERS; i ++ ) {                                                            //validate memory area for all workers.
 
         //populate worker's attributes.
+
+        pthread_mutex_init( &(tmp -> s_window_mutex), NULL );
 
         tmp -> identifier = i;
 
@@ -367,7 +371,7 @@ void * work ( void * _worker ) {
     block   * myblock = ( me -> my_block );
 
     if ( me -> is_working == '0') {
-        printf("\n WORKER %d CREATED BUT TEMPORARILY PAUSED.\n ", me -> identifier ); fflush(stdout);
+        //printf("\n WORKER %d CREATED BUT TEMPORARILY PAUSED.\n ", me -> identifier ); fflush(stdout);
         goto sleep;
     } else{
         printf("\n WORKER %d RUNNING FOR DOWNLOAD.\n ", me -> identifier ); fflush(stdout);
@@ -377,7 +381,8 @@ void * work ( void * _worker ) {
 
     myblock -> BLTC ++;
 
-    ret = reliable_file_forward( (me -> identifier), ( me -> sockfd ), ( me -> client_addr ), ( me -> len), ( myblock -> buffer_cache ), ( me -> sliding_window_slot_ ) );
+    ret = reliable_file_forward( (me -> identifier), ( me -> sockfd ), ( me -> client_addr ), ( me -> len), 
+                                    ( myblock -> buffer_cache ), ( me -> sliding_window_slot_ ), &( me -> s_window_mutex ) );
     if (ret == -1) {
         printf("Error in function : reliable_data_trasnfer.");
         goto redo;
@@ -405,12 +410,12 @@ void * work ( void * _worker ) {
 void * acknowledgment_keeper( void * _block ){
 
 
-    int     ret,    len;
+    int     ret,    len = sizeof( struct sockaddr_in );
 
     char    *id,            *seq_num;
 
 
-    char    *buffer = malloc( sizeof( char ) * ACK_SIZE );
+    char    *buffer = malloc( sizeof( char ) * MAXLINE );
 
     block   *myblock = ( block * ) _block;
 
@@ -428,8 +433,10 @@ void * acknowledgment_keeper( void * _block ){
 
         memset( buffer, 0, sizeof( buffer ) );
 
-        ret = recvfrom( myblock -> server_sock_desc, (char *) buffer, ACK_SIZE , MSG_WAITALL, ( struct sockaddr *) &client_address, &len); 
+        ret = recvfrom( myblock -> server_sock_desc, (char *) buffer, MAXLINE , MSG_WAITALL, ( struct sockaddr *) &client_address, &len); 
         if (ret <= 0)       Error_("Error in function : recvfrom (acknowledgment_demultiplexer).", 1);
+
+        printf("\n ACK received : ");
 
         /*  Parse the packet to keep separated the identifier and sequence number fields.  */
 
@@ -460,6 +467,8 @@ void * acknowledgment_keeper( void * _block ){
 
 
         {
+            pthread_mutex_lock( &( w_tmp -> s_window_mutex) );
+
             /*  THIS IS A CRITICAL SECTION FOR ACCESS ON THE SLIDING WINDOW (shared by ack-keeper thread and the relative worker).
                 Update worker window's slot's status from SENT to ACKED. 
                 If the slot is the first of the sliding window, forward a SIGUSR2 signal to worker-thread to get the window sliding on. */
@@ -468,9 +477,16 @@ void * acknowledgment_keeper( void * _block ){
 
             sw_tmp -> status = ACKED;
 
-            current_timestamp( sw_tmp -> acked_timestamp );
+            printf(" %d", sw_tmp -> sequence_number );
 
-            if ( ( sw_tmp -> is_first ) == '1' )    pthread_kill( ( w_tmp -> tid ), SIGUSR2 ); 
+            //current_timestamp( sw_tmp -> acked_timestamp );
+
+            if ( ( sw_tmp -> is_first ) == '1' )    {
+                pthread_kill( ( w_tmp -> tid ), SIGUSR2 ); 
+                printf("\n SIGNAL THE WORKER TO SLIDE ON.");
+            }
+
+            pthread_mutex_unlock( &( w_tmp -> s_window_mutex) );
 
         }         
 
@@ -504,7 +520,7 @@ void * time_wizard( void * _worker ){
 
     if ( wrkr -> is_working == '0') {
 
-        printf("\n TIME WIZARD %d CREATED BUT TEMPORARILY PAUSED.\n ", wrkr -> identifier ); fflush(stdout);
+        //printf("\n TIME WIZARD %d CREATED BUT TEMPORARILY PAUSED.\n ", wrkr -> identifier ); fflush(stdout);
         pause();                    //wait for a SIGUSR to be awaken (as well as his matched worker thread).
 
     } else{
