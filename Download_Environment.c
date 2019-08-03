@@ -455,13 +455,15 @@ void * acknowledgment_keeper( void * _block ){
 
 
         {
-            //pthread_mutex_lock( &( w_tmp -> s_window_mutex) );
+            pthread_mutex_lock( &( w_tmp -> s_window_mutex) );
 
             /*  THIS IS A CRITICAL SECTION FOR ACCESS ON THE SLIDING WINDOW (shared by ack-keeper thread and the relative worker).
                 Update worker window's slot's status from SENT to ACKED. 
                 If the slot is the first of the sliding window, forward a SIGUSR2 signal to worker-thread to get the window sliding on. */
 
-            if ( ( sw_tmp -> status ) != SENT )     Error_("Error in acknowledgment handling : unexpected window's status.", 1);
+            if ( ( sw_tmp -> status ) != SENT )  {
+                printf("\n Error in acknowledgemnt keeper : unexpected window status = %d", sw_tmp ->status);
+            }
 
             sw_tmp -> status = ACKED;
 
@@ -474,7 +476,7 @@ void * acknowledgment_keeper( void * _block ){
                 printf("\n SIGNAL THE WORKER TO SLIDE ON.");            fflush(stdout);
             }
 
-            //pthread_mutex_unlock( &( w_tmp -> s_window_mutex) );
+            pthread_mutex_unlock( &( w_tmp -> s_window_mutex) );
 
         }         
 

@@ -258,13 +258,13 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
 
         if ( endfile == filesize )   goto stop;
         
-        //pthread_mutex_lock( mutex );
+        
 
         printf("\n DOWNLOAD IN PROGRESS...");       fflush(stdout);
 
-        while ( ( tmp -> status ) == FREE && ( endfile < filesize ) ) {                             
-            
-            sleep(1);
+        while ( ( tmp -> status ) == FREE && ( endfile < filesize ) ) {   
+
+            pthread_mutex_lock( mutex );                          
 
             /*  Populate packet's contents ( worker identifier, sequence number and related chunck of file bytes). */
 
@@ -326,11 +326,11 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
 
             endfile += strlen( packet_content );  
 
+            pthread_mutex_unlock( mutex );
+
             if ( strlen( packet_content ) < ( PACKET_SIZE ) )     break;                        //file-is-over condition : all bytes sent.
 
         }
-
-        //pthread_mutex_unlock( mutex );
 
         stop: 
 
@@ -361,7 +361,7 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
 
         printf("\n WORKER AWAKEN, SLIDING THE WINDOW ON...");               fflush(stdout);
 
-        //pthread_mutex_lock( mutex );
+        pthread_mutex_lock( mutex );
 
         /*  Temporarily block all signals to this thread.  */
 
@@ -403,9 +403,7 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
 
         printf("\n WINDOW SLIDED ON.");                                     fflush(stdout);
 
-        //pthread_mutex_trylock( mutex );
-
-        //pthread_mutex_unlock( mutex );
+        pthread_mutex_unlock( mutex );
 
         printf( "counter = %d - filesize = %d", counter, filesize);         fflush(stdout);
 
