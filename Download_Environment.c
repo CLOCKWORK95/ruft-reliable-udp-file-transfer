@@ -336,19 +336,6 @@ int start_download( char *pathname , struct sockaddr_in *client_address, int len
 
 
 
-
-        /*  EVENT HANDLERS DECLARATION : SIGUSR1 & SIGUSR2 */
-
-void wake_up(){}                                                                              //SIGUSR1 handler. 
-
-void incoming_ack(){}                                                                         //SIGUSR2 handler.
-
-
-
-
-
-
-
         /*   ****    ***     THREADS' FUNCTIONS     ***  ****   */
 
         
@@ -455,6 +442,7 @@ void * acknowledgment_keeper( void * _block ){
 
         }
 
+
         /*  Once the worker is found, find the worker's window's slot with sequence number as specified on ACK  */
 
         sw_tmp = ( w_tmp -> sliding_window_slot_ );
@@ -467,7 +455,7 @@ void * acknowledgment_keeper( void * _block ){
 
 
         {
-            pthread_mutex_lock( &( w_tmp -> s_window_mutex) );
+            //pthread_mutex_lock( &( w_tmp -> s_window_mutex) );
 
             /*  THIS IS A CRITICAL SECTION FOR ACCESS ON THE SLIDING WINDOW (shared by ack-keeper thread and the relative worker).
                 Update worker window's slot's status from SENT to ACKED. 
@@ -477,16 +465,16 @@ void * acknowledgment_keeper( void * _block ){
 
             sw_tmp -> status = ACKED;
 
-            printf(" %d", sw_tmp -> sequence_number );
+            printf(" %d", sw_tmp -> sequence_number );                  fflush(stdout);
 
             //current_timestamp( sw_tmp -> acked_timestamp );
 
             if ( ( sw_tmp -> is_first ) == '1' )    {
                 pthread_kill( ( w_tmp -> tid ), SIGUSR2 ); 
-                printf("\n SIGNAL THE WORKER TO SLIDE ON.");
+                printf("\n SIGNAL THE WORKER TO SLIDE ON.");            fflush(stdout);
             }
 
-            pthread_mutex_unlock( &( w_tmp -> s_window_mutex) );
+            //pthread_mutex_unlock( &( w_tmp -> s_window_mutex) );
 
         }         
 

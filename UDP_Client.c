@@ -321,6 +321,8 @@ void * downloader( void * infos_ ){
 
             for (int i = 0; i < WINDOW_SIZE; i++) {
 
+                printf("\n wnd_tmp->sequence_number=%d  sequence_number=%d", wnd_tmp->sequence_number,sequence_number); fflush(stdout);
+
                 if ( wnd_tmp -> sequence_number == sequence_number ) {
 
                     /* Send an ACKNOWLEDGMENT to the RUFT Server Side. */
@@ -372,6 +374,8 @@ void * downloader( void * infos_ ){
 
         }
 
+        printf("\n counter = %d, filesize = %d", counter, filesize);  fflush(stdout);
+
         memset( rcv_buffer, 0, strlen(rcv_buffer) );
 
     } while( counter < filesize );
@@ -383,10 +387,9 @@ void * downloader( void * infos_ ){
 void * writer( void * infos_ ){
 
     /* Temporarily block SIGUSR2 signal occurrences. */
-    sigset_t                                    set;
+    sigset_t    set;
     sigemptyset( &set );
     sigaddset( &set, SIGUSR2);
-    signal( SIGUSR2, write_sig_handler);
     sigprocmask( SIG_BLOCK, &set, NULL );
 
     int                                         ret,            file_descriptor,            counter = 0;
@@ -400,16 +403,41 @@ void * writer( void * infos_ ){
         pthread_exit(NULL);
     }
 
-    do{
+    printf("\n WRITER IS ENTERING THE CYCLE.");                            fflush(stdout);
+
+    do {
+        printf("\n WRITER IS in THE CYCLE.");                            fflush(stdout);
         /* Be ready to be awaken by SIGUSR2 occurrence. Go on pause. */
+        
+        if( sigpending( &set ) == -1 ){
+            printf("\n Error in function : sigpending (writer). errno = %d", errno);
+            pthread_exit(NULL);
+        }
+
+        if ( sigismember( &set, SIGUSR2 ) ) {
+            signal( SIGUSR2, write_sig_handler );
+            sigprocmask( SIG_UNBLOCK, &set, NULL );
+            printf("\n SIGUSR2 pending on mask! goto action.");            fflush(stdout);
+            goto action;
+        }
+
+        signal( SIGUSR2, write_sig_handler );
+        sigemptyset( &set );
+        sigaddset( &set, SIGUSR2);
         sigprocmask( SIG_UNBLOCK, &set, NULL );
 
+        printf("\n SIGUSR2 UNBLOCKED");                                    fflush(stdout);
+
         pause();
+
+        action:
+        
+        printf("\n SIGUSR2 BLOCKED");                                      fflush(stdout);
 
         /* Temporarily block SIGUSR2 signal occurrences. */
         sigprocmask( SIG_BLOCK, &set, NULL );
 
-        printf( "\n WRITER AWAKED" );                                   fflush(stdout);
+        printf( "\n WRITER AWAKED" );                                      fflush(stdout);
 
         {   
             /*  THIS IS A CRITIAL SECTION FOR RECEIVING WINDOWS ACCESS ON WRITING. 
@@ -421,27 +449,21 @@ void * writer( void * infos_ ){
 
             rw_slot      *curr_first   = ( infos -> rcv_wnd );
 
-            while ( wnd_tmp -> status == RECEIVED ) {
+            while( ( curr_first -> status != RECEIVED ) && ( curr_first -> is_first  != '1') ) {
+                curr_first = ( curr_first -> next );
+            }
+
+            while ( curr_first -> status == RECEIVED ) {
 
                 lseek( file_descriptor, 0, SEEK_END );
 
                 /* Write the packet within the new file in client's directory. */
-                ret = write( file_descriptor, ( wnd_tmp -> packet ), strlen( wnd_tmp -> packet  ) );
+                ret = write( file_descriptor, ( curr_first -> packet ), strlen( curr_first -> packet  ) );
                 if ( ret == -1)         Error_( "Error in function : write (thread writer).", 1);
 
                 printf( "\n Packet %d content has been written on file %s. %d bytes written .", 
-                                            ( wnd_tmp -> sequence_number ), ( infos -> pathname ), ret );            fflush(stdout);
-                
+                                            ( curr_first -> sequence_number ), ( infos -> pathname ), ret );            fflush(stdout);
 
-                counter ++;
-
-                wnd_tmp = ( wnd_tmp -> next );
-                
-            
-            }
-
-            
-            while ( curr_first -> status == RECEIVED ){
 
                 /* Slide the receiving window on. */
 
@@ -454,7 +476,11 @@ void * writer( void * infos_ ){
                 curr_first = ( curr_first -> next );
                 infos -> rcv_wnd = curr_first;
 
+                printf("\n WINDOW SLIDED ON");      fflush(stdout);
+                
+            
             }
+
 
             if ( pthread_mutex_unlock( &rcv_window_mutex ) == -1 )        Error_("Error in function : pthread_mutex_unlock (writer).", 1);
 

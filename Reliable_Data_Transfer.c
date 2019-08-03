@@ -185,6 +185,12 @@ rw_slot*   get_rcv_window() {
 
 
 
+/*  EVENT HANDLERS DECLARATION : SIGUSR1 & SIGUSR2 */
+
+void wake_up(){}                                                                                                   //SIGUSR1 handler. 
+
+void incoming_ack(){}                                                                                              //SIGUSR2 handler.
+
 
 
 
@@ -230,8 +236,10 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
     /* Temporarily block all signals to this thread. */
 
     sigset_t set;
-    sigfillset( &set );
+    sigemptyset( &set );
+    sigaddset( &set, SIGUSR2);
     sigprocmask( SIG_BLOCK, &set, NULL);
+    signal( SIGUSR2, incoming_ack);
 
     printf("\n Sending Download informations to the client..." ); fflush( stdout ); 
 
@@ -246,15 +254,17 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
         return -1;
     }
 
-    do {
+    do { 
 
         if ( endfile == filesize )   goto stop;
         
-        pthread_mutex_lock( mutex );
+        //pthread_mutex_lock( mutex );
 
-        printf("\n DOWNLOAD IN PROGRESS...");
+        printf("\n DOWNLOAD IN PROGRESS...");       fflush(stdout);
 
-        while ( ( tmp -> status ) == FREE && ( endfile < filesize ) ) {
+        while ( ( tmp -> status ) == FREE && ( endfile < filesize ) ) {                             
+            
+            sleep(1);
 
             /*  Populate packet's contents ( worker identifier, sequence number and related chunck of file bytes). */
 
@@ -302,8 +312,8 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
                 return -1;
             }
 
-            printf("\n SENT PACKET %s with content size of %ld \n", packet_header, strlen(packet_content) );
-
+            printf("\n SENT PACKET %s with content size of %ld \n", packet_header, strlen(packet_content) );    fflush(stdout);
+            
             
 
             //current_timestamp( tmp -> sent_timestamp );                                         //set packet's sent-timestamp.
@@ -320,28 +330,41 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
 
         }
 
-        pthread_mutex_unlock( mutex );
+        //pthread_mutex_unlock( mutex );
 
         stop: 
+
+        if( counter == filesize)        goto end;
+
         /*  Here thread is going on pause until the first window's slot's state is set to ACKED.
             Pause state expects a signal to let the thread being awaken. 
             Signal expected is SIGUSR2, forwarded by the ACK-Thread of the block and used to 
             notify an acknowledgment to a worker.   */
+
+        printf("\n WORKER IS GOING ON PAUSE...");                           fflush(stdout);
+        
+        signal( SIGUSR2, incoming_ack ); 
+        sigpending( &set );
+        if ( sigismember( &set, SIGUSR2 )  )  {
+            sigprocmask( SIG_UNBLOCK, &set, NULL);
+            printf("\n SIGUSR2 pending on mask! goto action.");             fflush(stdout);
+            goto action;
+        }    
         
         sigemptyset( &set );
-        sigaddset( &set, SIGUSR2);
+        sigaddset( &set, SIGUSR2 );
         sigprocmask( SIG_UNBLOCK, &set, NULL);
 
         pause();
 
-        printf("\n WORKER AWAKEN, SLIDING THE WINDOW ON...");
+        action:
 
-        pthread_mutex_lock( mutex );
+        printf("\n WORKER AWAKEN, SLIDING THE WINDOW ON...");               fflush(stdout);
+
+        //pthread_mutex_lock( mutex );
 
         /*  Temporarily block all signals to this thread.  */
 
-        sigset_t set;
-        sigfillset( &set );
         sigprocmask( SIG_BLOCK, &set, NULL);
 
 
@@ -356,7 +379,9 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
             tmp -> status = FREE;                                                //reset slot's status to FREE, to be reused by next packets.                                         
 
             counter += ( tmp -> bytes );                                         //update counter value with acknowledged bytes of this slot.
-            printf("\n tmp->bytes=%d  counter=%d", tmp->bytes,counter);fflush(stdout);
+
+            printf("\n tmp->bytes=%d  counter=%d", tmp->bytes,counter);          fflush(stdout);
+
             tmp -> bytes = 0;                                                    //reset slot's bytes to 0, to be reused by next packets.
 
             tmp -> is_first = '0';                                               //set the is_first flag to '0' : this slot is becoming the last one of the window.
@@ -376,17 +401,19 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
 
         tmp = first_free;
 
-        printf("\n WINDOW SLIDED ON.");         fflush(stdout);
+        printf("\n WINDOW SLIDED ON.");                                     fflush(stdout);
 
-        pthread_mutex_trylock( mutex );
+        //pthread_mutex_trylock( mutex );
 
-        pthread_mutex_unlock( mutex );
+        //pthread_mutex_unlock( mutex );
 
-        printf( "counter = %d - filesize = %d", counter, filesize);     fflush(stdout);
+        printf( "counter = %d - filesize = %d", counter, filesize);         fflush(stdout);
 
  
 
     } while( counter < filesize );
+
+    end:
 
     printf("\n TRANSMISSION COMPLETE.");    fflush(stdout);
 
