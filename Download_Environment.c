@@ -63,24 +63,37 @@ typedef struct block_ {
 
     pthread_t               ack_keeper;                                 //Acknowledgments keeper and demultiplexer thread's TID.
 
+    pthread_t               volture;                                    //Block's killer id.
+
     struct block_           *next;                                      //Pointer to next block structure.
 
     int                     BLTC;                                       //Block Life Timer Countdown.
+
+    char                    eraser;                                     // '0' : live    | '1' : free.
+
+    char                    quit;                                       // '0' : live    | '1' : free.
 
 
 }               block;                                                  block        *download_environment;
 
 
 
+        /*  EVENT HANDLER FUNCTIONS  */
+
+void   erase( int signo ) {}
+
+int    block_eraser( block * block_to_free );
+
+
         /*  THREADS' FUNCTIONS DECLARATION */
 
 void * work( void* _worker );
 
-
 void * acknowledgment_keeper( void * _block );
 
-
 void * time_wizard( void * _worker);
+
+void * block_volture( void * _block );
 
 
 
@@ -97,6 +110,8 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
 
     int     ret,    fd,     filesize;    
 
+    if ( new_block == download_environment ) goto next;
+
     /* Validate memory area to contain a new block structure. */
     new_block = malloc( sizeof( block ) );
     if ( new_block == NULL ) {
@@ -104,6 +119,7 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
         return -1;
     }
 
+    next:
 
     /* Open a new session on file pathname, and load the file in main memory to be used by this new block. */
 
@@ -125,6 +141,9 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
     printf("\n Opened session on file %s.\n File charged on block's cache.\n", pathname); fflush(stdout);
 
     /*  Populate the block structure attributes. */
+
+    new_block -> eraser = '0';
+    new_block -> quit = '0';
 
     new_block -> filename = malloc( sizeof(char) * ( strlen( pathname ) + 2 ) );
     if (new_block -> filename == NULL) {
@@ -204,6 +223,12 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
     /*  Create the Acknowledgment Keeper Thread, to handle acknowledgments throughout the block. */
 
     ret = pthread_create( &( new_block -> ack_keeper ), NULL, acknowledgment_keeper, (void *) new_block );
+    if (ret ==-1) {
+        printf("Error in function : pthread_create(init_new_block).");
+        return -1;
+    }
+
+    ret = pthread_create( &( new_block -> volture ), NULL, block_volture, (void *) new_block );
     if (ret ==-1) {
         printf("Error in function : pthread_create(init_new_block).");
         return -1;
@@ -349,7 +374,8 @@ int start_download( char *pathname , struct sockaddr_in *client_address, int len
 void * work ( void * _worker ) {
 
     signal( SIGUSR1, wake_up);              //Set the waking up event handler.
-    signal( SIGUSR2, incoming_ack);         //Set the ACKNOWLEDGMENT event handler (signal has to be forwarded by a specialized thread, working for all block's workers).
+    signal( SIGUSR2, incoming_ack);         //Set the ACKNOWLEDGMENT event handler 
+    signal( SIGALRM, erase);
 
     int ret;
 
@@ -357,29 +383,44 @@ void * work ( void * _worker ) {
 
     block   * myblock = ( me -> my_block );
 
-    if ( me -> is_working == '0') {
-        //printf("\n WORKER %d CREATED BUT TEMPORARILY PAUSED.\n ", me -> identifier ); fflush(stdout);
+    if ( ( me -> is_working)  == '0') {
+
         goto sleep;
+
     } else{
-        printf("\n WORKER %d RUNNING FOR DOWNLOAD.\n ", me -> identifier ); fflush(stdout);
+
+        printf("\n WORKER %d RUNNING FOR DOWNLOAD.\n ", me -> identifier );         fflush(stdout);
+
     }
 
     redo:
 
     myblock -> BLTC ++;
 
+    free( me -> sliding_window_slot_ );
+
+    me -> sliding_window_slot_ = get_sliding_window();
+
     ret = reliable_file_forward( (me -> identifier), ( me -> sockfd ), ( me -> client_addr ), ( me -> len), 
                                     ( myblock -> buffer_cache ), ( me -> sliding_window_slot_ ), &( me -> s_window_mutex ) );
     if (ret == -1) {
-        printf("Error in function : reliable_data_trasnfer.");
+        printf("Error in function : reliable_file forward.");
         goto redo;
     }
 
-    sleep:
-
     me -> is_working = '0';
 
+    pthread_kill( ( myblock -> volture ), SIGALRM ); 
+
+    sleep:
+
     pause();
+
+    if ( ( myblock -> eraser ) == '1')       pthread_exit(NULL);
+
+    myblock -> quit = '0';
+
+    printf("\n WORKER %d RUNNING FOR DOWNLOAD.\n ", ( me -> identifier ) );         fflush(stdout);
 
     goto redo;
 
@@ -397,7 +438,7 @@ void * work ( void * _worker ) {
 void * acknowledgment_keeper( void * _block ){
 
 
-    int     ret,    len = sizeof( struct sockaddr_in );
+    int     ret,            len = sizeof( struct sockaddr_in );
 
     char    *id,            *seq_num;
 
@@ -421,7 +462,10 @@ void * acknowledgment_keeper( void * _block ){
         memset( buffer, 0, sizeof( buffer ) );
 
         ret = recvfrom( myblock -> server_sock_desc, (char *) buffer, MAXLINE , MSG_WAITALL, ( struct sockaddr *) &client_address, &len); 
-        if (ret <= 0)       Error_("Error in function : recvfrom (acknowledgment_demultiplexer).", 1);
+        if (ret <= 0) {
+            printf("\n ACK KEEPER EXITS...");
+            pthread_exit( NULL );
+        }
 
         printf("\n ACK received : ");
 
@@ -481,7 +525,9 @@ void * acknowledgment_keeper( void * _block ){
         }         
 
 
-    } while (1);
+    } while ( myblock -> eraser != '1');
+
+    pthread_exit( NULL );
 
 }
 
@@ -514,8 +560,9 @@ void * time_wizard( void * _worker ){
         pause();                    //wait for a SIGUSR to be awaken (as well as his matched worker thread).
 
     } else{
-        printf("\n TIME WIZARD %d RUNNING.\n ", wrkr -> identifier );                        fflush(stdout);
+        printf("\n TIME WIZARD %d RUNNING.\n ", ( wrkr -> identifier ) );                        fflush(stdout);
         pause();           //wait for (the other!) SIGUSR to be awaken (as the worker is ready to transmit).
+        if ( ( wrkr -> my_block -> eraser ) == '1')    pthread_exit( NULL );
 
     }
 
@@ -528,11 +575,11 @@ void * time_wizard( void * _worker ){
 
         for (int i = 0; i < WINDOW_SIZE; i ++ ) {
 
-            if ( ( window -> sent_timestamp ) -> tv_sec != 0  &&  ( window -> sent_timestamp ) -> tv_nsec != 0 ) {
+            if ( ( window -> sent_timestamp -> tv_sec != 0 )  &&  ( window -> sent_timestamp -> tv_nsec != 0 ) ) {
                 
                 if ( nanodifftime( now, window -> sent_timestamp )  >= ( window -> timeout_interval ) ){
 
-                    if ( retransmission( window, wrkr -> sockfd, (wrkr -> client_addr) ) == -1 )     Error_("Error in function: retransmission (time_wizard).", 1);
+                    if ( retransmission( window, ( wrkr -> sockfd ), (wrkr -> client_addr), wrkr ->len ) == -1 )     Error_("Error in function: retransmission (time_wizard).", 1);
 
                 }
 
@@ -548,6 +595,140 @@ void * time_wizard( void * _worker ){
  
 
 
+/*
+    This is the Block's Volure thread function. This Thread is generally on pause.
+    Every time that a worker ends his download job, it signals this thread to wake up and check the block's status.
+    If that worker was the last block's worker stanting, this thread counts BLTC seconds and, if no threads have occurred
+    during the countdown, the function free the block's memory space, and exits.
+*/
+void * block_volture( void * _block )  {
+
+    sigset_t set;
+    sigemptyset( &set );
+    sigaddset( &set, SIGALRM );
+    signal( SIGALRM, erase );
+    
+
+    int ret;
+
+    block * myblock = ( block * ) _block;
+
+    redo:
+
+    pause();
+
+    {  
+        /*  This is the check for block's erasing. if there are no running workers within the block,
+            this thread is going to sleep for BLTC seconds. If still no threads are running in this block,
+            then the block will be erased from download environment, to set free memory resources.      */
+
+        char    flag = '0';
+
+        worker  *tmp = ( myblock -> workers );
+
+        for (int i = 0; i < MAX_WORKERS; i ++ ) {
+
+            if ( tmp -> is_working == '1' ){
+
+                flag = '1';
+
+            }   tmp = tmp -> next;
+
+        }
+
+        if( flag == '0') {
+            /* There are no workers currently running. The countdown begins. */
+
+            printf("\n This is currently the last worker standing.\nThis Block will be erased in BLTC seconds..."); fflush(stdout);
+
+            myblock -> quit = '1';
+
+            sleep( myblock -> BLTC );
+
+            if( myblock -> quit == '1' ) {
+
+                block_eraser( myblock );
+
+                if ( myblock -> eraser == '1' )   pthread_exit( NULL );
+
+                myblock -> quit = '0';
+            }
+        } 
+    }
+
+    goto redo;
+    
+}
+
+
+
+
+/*
+    This is the function called by the block_volture to free the memory space occupied by a block (specified in block_to_free).
+*/
+int   block_eraser( block * block_to_free ){
+
+    int ret;
+
+    if ( block_to_free == download_environment ) {
+
+        printf("\n This is the last standing block. It is not to be erased.");      fflush(stdout);
+        block_to_free -> eraser = '0';
+        return 1;
+    }
+
+    printf("\n  :: BLOCK ERASER ::  \n Destroying block referencing file %s", 
+                                                ( block_to_free -> filename ) );    fflush(stdout);
+
+    block_to_free -> eraser = '1';
+
+    pthread_t this_tid = pthread_self();
+
+    worker  * tmp;
+
+    tmp = ( block_to_free -> workers );
+
+    for( int i = 0; i < MAX_WORKERS; i ++ ) {
+
+        /* Free worker's attributes. */
+        free( tmp -> client_addr );
+        free( tmp -> sliding_window_slot_ );
+        pthread_kill( ( tmp -> tid ), SIGALRM );
+        pthread_kill( ( tmp -> time_wizard ), SIGALRM );
+
+        /* Free the worker struct's memory space. */
+        worker *quit = tmp;
+        tmp = ( tmp -> next );
+        free( quit );
+    }
+
+    ret = munmap( ( block_to_free -> buffer_cache ), sizeof( ( block_to_free -> buffer_cache ) ) );
+    if (ret == -1) {
+        printf("\n Error in function : munmap (block_eraser). errno = %d", errno );
+        return -1;
+    }
+
+    pthread_kill( ( block_to_free -> ack_keeper ), SIGALRM );
+
+
+    /* Reassemble a "new" download environment, after this function has broke the chain of linked list. */
+    
+    block * broken = ( block_to_free -> next );
+    
+
+    while( ( broken -> next ) != NULL ){
+        broken = ( broken -> next );
+    }   broken -> next = download_environment;
+
+    download_environment = ( block_to_free -> next );
+
+    free( block_to_free );
+
+    printf("\n THE BLOCK HAS BEEN DESTROYED.");                                     fflush(stdout);
+
+    return 0;
+
+}
 
 
 

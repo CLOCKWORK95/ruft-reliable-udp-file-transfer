@@ -432,12 +432,12 @@ int reliable_file_receive();
     It takes as arguments a window, the block's socket descriptor and the client address forwarding the packet to.
     Returns 0 on success, -1 on failure.
 */
-int retransmission( sw_slot *window, int socket_descriptor, struct sockaddr_in  *clientaddress ) {
+int retransmission( sw_slot *window, int socket_descriptor, struct sockaddr_in  *clientaddress , int len ) {
 
     int ret;
 
     ret = sendto( socket_descriptor, (const char *) window -> packet , strlen( window -> packet ), 
-                  MSG_CONFIRM, (const struct sockaddr *) clientaddress, sizeof( *clientaddress ) ); 
+                  MSG_CONFIRM, (const struct sockaddr *) clientaddress, len ); 
     if (ret == -1) {
         printf("Error in function sendto (reliable_file_transfer).");
         return -1;

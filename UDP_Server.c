@@ -66,7 +66,10 @@ char    *load_dir( int size );
 
 /* RECEPTIONIST THREAD FUNCTION DECLARATION */
 
-void * receptionist( void * client_info );
+void    *receptionist( void * client_info );
+
+
+
 
 
   
