@@ -373,9 +373,15 @@ int start_download( char *pathname , struct sockaddr_in *client_address, int len
 */
 void * work ( void * _worker ) {
 
+    sigset_t set;
+    sigemptyset( &set );
+    
+    sigaddset( &set, SIGUSR2 );
+
     signal( SIGUSR1, wake_up);              //Set the waking up event handler.
     signal( SIGUSR2, incoming_ack);         //Set the ACKNOWLEDGMENT event handler 
-    signal( SIGALRM, erase);
+
+    sigprocmask( SIG_BLOCK, &set, NULL );
 
     int ret;
 
@@ -384,6 +390,10 @@ void * work ( void * _worker ) {
     block   * myblock = ( me -> my_block );
 
     if ( ( me -> is_working)  == '0') {
+
+        sigaddset( &set, SIGUSR1 );
+
+        sigprocmask( SIG_BLOCK, &set, NULL );
 
         goto sleep;
 
@@ -401,7 +411,9 @@ void * work ( void * _worker ) {
 
     me -> sliding_window_slot_ = get_sliding_window();
 
-    ret = reliable_file_forward( (me -> identifier), ( me -> sockfd ), ( me -> client_addr ), ( me -> len), 
+    sigprocmask( SIG_UNBLOCK, &set, NULL );
+
+    ret = reliable_file_forward( ( me -> identifier ), ( me -> sockfd ), ( me -> client_addr ), ( me -> len ), 
                                     ( myblock -> buffer_cache ), ( me -> sliding_window_slot_ ), &( me -> s_window_mutex ) );
     if (ret == -1) {
         printf("Error in function : reliable_file forward.");
@@ -410,9 +422,21 @@ void * work ( void * _worker ) {
 
     me -> is_working = '0';
 
-    pthread_kill( ( myblock -> volture ), SIGALRM ); 
+    
+    sigaddset( &set, SIGUSR1 );
 
-    sleep:
+    sigprocmask( SIG_BLOCK, &set, NULL );
+
+    pthread_kill( ( myblock -> volture ), SIGALRM ); 
+    
+    sleep: 
+
+    sigpending( &set );
+
+    if ( sigismember( &set, SIGUSR1 ) ) {
+        sigprocmask( SIG_UNBLOCK, &set, NULL );
+        if ( ( myblock -> eraser ) == '1')       pthread_exit(NULL);
+    }
 
     pause();
 
@@ -436,6 +460,8 @@ void * work ( void * _worker ) {
     This thread is responsible for notifying workers about the received ACKs and for awakening a worker waiting for sliding his window on.
 */
 void * acknowledgment_keeper( void * _block ){
+
+    signal( SIGUSR1, erase );
 
 
     int     ret,            len = sizeof( struct sockaddr_in );
@@ -548,21 +574,42 @@ void * time_wizard( void * _worker ){
 
     worker              *wrkr = ( worker *) _worker;
 
+    block               *myblock = wrkr -> my_block;
+
     sw_slot             *window = wrkr -> sliding_window_slot_;
 
+    sigset_t set;
+    sigemptyset( &set );
+    sigaddset( &set, SIGUSR1 ); 
 
+    signal( SIGUSR1, erase );
+
+    sigprocmask( SIG_BLOCK, &set, NULL );
+    
     struct timespec     *now = malloc( sizeof( struct timespec ) );
     if (now == NULL)        Error_("Error in function : malloc ( time wizard).", 1);
 
     if ( wrkr -> is_working == '0') {
 
+        sigpending( &set );
+        if( sigismember( &set, SIGUSR1 ) ) {
+            sigprocmask( SIG_UNBLOCK, &set, NULL );
+            if ( ( myblock -> eraser ) == '1')    pthread_exit( NULL );
+        }
         //printf("\n TIME WIZARD %d CREATED BUT TEMPORARILY PAUSED.\n ", wrkr -> identifier ); fflush(stdout);
-        pause();                    //wait for a SIGUSR to be awaken (as well as his matched worker thread).
+        pause();                    //wait for a SIGNAL to be awaken (as well as his matched worker thread).
+        if ( ( myblock -> eraser ) == '1')    pthread_exit( NULL );
 
     } else{
         printf("\n TIME WIZARD %d RUNNING.\n ", ( wrkr -> identifier ) );                        fflush(stdout);
-        pause();           //wait for (the other!) SIGUSR to be awaken (as the worker is ready to transmit).
-        if ( ( wrkr -> my_block -> eraser ) == '1')    pthread_exit( NULL );
+        
+        sigpending( &set );
+        if( sigismember( &set, SIGUSR1 ) ) {
+            sigprocmask( SIG_UNBLOCK, &set, NULL );
+            if ( ( myblock -> eraser ) == '1')    pthread_exit( NULL );
+        }
+        pause();                   //wait for  a SIGNAL to be awaken (as the worker is ready to transmit).
+        if ( ( myblock -> eraser ) == '1')    pthread_exit( NULL );
 
     }
 
@@ -606,7 +653,7 @@ void * block_volture( void * _block )  {
     sigset_t set;
     sigemptyset( &set );
     sigaddset( &set, SIGALRM );
-    signal( SIGALRM, erase );
+    
     
 
     int ret;
@@ -615,7 +662,12 @@ void * block_volture( void * _block )  {
 
     redo:
 
+    signal( SIGALRM, erase );
+    sigprocmask( SIG_UNBLOCK, &set, NULL);
+
     pause();
+
+    sigprocmask( SIG_BLOCK, &set, NULL);
 
     {  
         /*  This is the check for block's erasing. if there are no running workers within the block,
@@ -668,6 +720,12 @@ void * block_volture( void * _block )  {
 */
 int   block_eraser( block * block_to_free ){
 
+    sigset_t set;
+    sigemptyset( &set );
+    sigaddset( &set, SIGUSR1 );
+    signal( SIGALRM, erase );
+    sigprocmask( SIG_BLOCK, &set, NULL );
+
     int ret;
 
     if ( block_to_free == download_environment ) {
@@ -689,12 +747,16 @@ int   block_eraser( block * block_to_free ){
     tmp = ( block_to_free -> workers );
 
     for( int i = 0; i < MAX_WORKERS; i ++ ) {
-
+        
         /* Free worker's attributes. */
-        free( tmp -> client_addr );
+        //free( tmp -> client_addr );
         free( tmp -> sliding_window_slot_ );
-        pthread_kill( ( tmp -> tid ), SIGALRM );
-        pthread_kill( ( tmp -> time_wizard ), SIGALRM );
+        pthread_kill( ( tmp -> tid ), SIGUSR1 );
+        printf("\n killing worker %d\n", i);                                          fflush(stdout);
+        sleep(1);
+        pthread_kill( ( tmp -> time_wizard ), SIGUSR1 );
+        printf("\n killing wizard %d\n", i);                                          fflush(stdout);
+        sleep(1);
 
         /* Free the worker struct's memory space. */
         worker *quit = tmp;
@@ -708,11 +770,13 @@ int   block_eraser( block * block_to_free ){
         return -1;
     }
 
-    pthread_kill( ( block_to_free -> ack_keeper ), SIGALRM );
+
+    pthread_kill( ( block_to_free -> ack_keeper ), SIGUSR1 );
 
 
     /* Reassemble a "new" download environment, after this function has broke the chain of linked list. */
     
+    if ( block_to_free -> next == NULL ) goto free;
     block * broken = ( block_to_free -> next );
     
 
@@ -721,6 +785,8 @@ int   block_eraser( block * block_to_free ){
     }   broken -> next = download_environment;
 
     download_environment = ( block_to_free -> next );
+
+    free:
 
     free( block_to_free );
 

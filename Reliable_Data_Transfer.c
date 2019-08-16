@@ -256,7 +256,10 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
 
     do { 
 
-        if ( endfile == filesize )   goto stop;
+        if ( endfile == filesize ) {
+            printf("\n ALL PACKETS TRANSMITTED ONCE.\n WAITING FOR ALL ACKNOWLEDGEMENTS...");     fflush(stdout);
+            goto stop;   
+        }
         
         
 

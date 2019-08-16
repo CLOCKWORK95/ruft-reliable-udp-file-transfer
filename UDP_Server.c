@@ -4,7 +4,7 @@
 #include "Download_Environment.c"
 #include "Reliable_Data_Transfer.c"
 
-#define PORT     49152
+#define PORT     5193
 
 
 #define LIST    0
@@ -96,9 +96,9 @@ int main(int argc, char ** argv) {
     memset(&servaddr, 0, sizeof(servaddr)); 
       
     /* Filling server information  */
-    servaddr.sin_family      =    AF_INET;                   // IPv4 
-    servaddr.sin_addr.s_addr =    inet_addr("127.0.0.1");    // 127.0.0.1
-    servaddr.sin_port        =    htons(PORT);               // Well-known RUFT Server port.
+    servaddr.sin_family      =    AF_INET;                          // IPv4 
+    servaddr.sin_addr.s_addr =    INADDR_ANY;                       // 127.0.0.1
+    servaddr.sin_port        =    htons(PORT);                      // Well-known RUFT Server port.
       
     /* Bind the socket with the server address */ 
     if ( bind(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr) ) < 0 ) { 

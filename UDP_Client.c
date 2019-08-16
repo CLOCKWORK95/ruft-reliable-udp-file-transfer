@@ -2,7 +2,7 @@
 #include "header.h"
 #include "Reliable_Data_Transfer.c"
 
-#define PORT     49152
+#define PORT     5193
 
 #define LIST    0
 
@@ -214,7 +214,7 @@ int download_request() {
 
     int                             ret,                     len;
 
-    char                            request[MAXLINE],        filename[MAXLINE];
+    char                            request[2 * MAXLINE],        filename[MAXLINE];
 
 
     struct file_download_infos      *infos = malloc ( sizeof( struct file_download_infos ) );
@@ -321,7 +321,7 @@ void * downloader( void * infos_ ){
 
             for (int i = 0; i < WINDOW_SIZE; i++) {
 
-                printf("\n wnd_tmp->sequence_number=%d  sequence_number=%d", wnd_tmp->sequence_number,sequence_number); fflush(stdout);
+                printf("\n wnd_tmp->sequence_number=%d  sequence_number=%d", wnd_tmp -> sequence_number, sequence_number); fflush(stdout);
 
                 if ( wnd_tmp -> sequence_number == sequence_number ) {
 
@@ -409,10 +409,7 @@ void * writer( void * infos_ ){
         printf("\n WRITER IS in THE CYCLE.");                            fflush(stdout);
         /* Be ready to be awaken by SIGUSR2 occurrence. Go on pause. */
         
-        if( sigpending( &set ) == -1 ){
-            printf("\n Error in function : sigpending (writer). errno = %d", errno);
-            pthread_exit(NULL);
-        }
+        sigpending(& set);
 
         if ( sigismember( &set, SIGUSR2 ) ) {
             signal( SIGUSR2, write_sig_handler );
