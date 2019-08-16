@@ -752,12 +752,7 @@ int   block_eraser( block * block_to_free ){
         //free( tmp -> client_addr );
         free( tmp -> sliding_window_slot_ );
         pthread_kill( ( tmp -> tid ), SIGUSR1 );
-        printf("\n killing worker %d\n", i);                                          fflush(stdout);
-        sleep(1);
         pthread_kill( ( tmp -> time_wizard ), SIGUSR1 );
-        printf("\n killing wizard %d\n", i);                                          fflush(stdout);
-        sleep(1);
-
         /* Free the worker struct's memory space. */
         worker *quit = tmp;
         tmp = ( tmp -> next );
