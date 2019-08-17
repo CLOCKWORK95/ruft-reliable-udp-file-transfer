@@ -45,13 +45,13 @@ typedef struct sliding_window_slot_ {
 
     int                     status;                                     // FREE - SENT - ACKED.
 
-    struct timespec         *sent_timestamp;                            //Istant of packet's forwarding.
+    struct timespec         sent_timestamp;                            //Istant of packet's forwarding.
 
-    struct timespec         *acked_timestamp;                           //Istant of ack receiving.
+    struct timespec         acked_timestamp;                           //Istant of ack receiving.
 
     long                    timeout_interval;                           //Timeout Interval of retransmission.
 
-    char                    *packet;                                    //The packet.          
+    char                    packet[ MAXLINE + 64 ];                     //The packet.          
 
     struct sliding_window_slot_     *next;                              //Pointer to the next slot.
 
@@ -94,17 +94,8 @@ sw_slot*   get_sliding_window() {
         return NULL;
     }
 
+    window -> sent_timestamp = (struct timespec) {0, 0};
     window -> is_first = '1';
-    window -> sent_timestamp = malloc( sizeof( struct timespec) );
-    if ( window -> sent_timestamp == NULL ) {
-        printf("Error in function : malloc (get sliding window).");
-        return NULL;
-    }
-    window -> acked_timestamp = malloc( sizeof( struct timespec) );
-    if ( window -> acked_timestamp == NULL ) {
-        printf("Error in function : malloc (get sliding window).");
-        return NULL;
-    }
     window -> sequence_number = 0;
     window -> bytes = 0;
     window -> status = FREE;
@@ -121,17 +112,8 @@ sw_slot*   get_sliding_window() {
 
         tmp = ( tmp -> next );
 
+        tmp -> sent_timestamp = (struct timespec) {0, 0};
         tmp -> is_first = '0';
-        window -> sent_timestamp = malloc( sizeof( struct timespec) );
-        if ( window -> sent_timestamp == NULL ) {
-            printf("Error in function : malloc (get sliding window).");
-            return NULL;
-        }
-        window -> acked_timestamp = malloc( sizeof( struct timespec) );
-        if ( window -> acked_timestamp == NULL ) {
-            printf("Error in function : malloc (get sliding window).");
-            return NULL;
-        }
         tmp -> sequence_number = i;
         tmp -> bytes = 0;
         tmp -> status = FREE;
@@ -297,16 +279,11 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
             }
 
 
-            tmp -> packet = malloc( sizeof(char) * sizeof(packet) );                              //temporarily write the packet on its sliding window's slot.
-            if ( tmp -> packet == NULL ) {
-                printf(" Error in function : malloc (reliable file forward).");
-                return -1;
-            }
-            sprintf( tmp -> packet, "%s", packet );
-
+            sprintf( ( tmp -> packet ), "%s", packet );
 
             tmp -> timeout_interval = TIMEOUT_INTERVAL;                                           //set the timeout interval for retransmission.
-
+            
+            current_timestamp( &(tmp -> sent_timestamp) );
 
             ret = sendto( socket_descriptor, (const char *) packet, MAXLINE, MSG_CONFIRM, 
                             (const struct sockaddr *) client_address, len ); 
@@ -439,14 +416,16 @@ int retransmission( sw_slot *window, int socket_descriptor, struct sockaddr_in  
 
     int ret;
 
-    ret = sendto( socket_descriptor, (const char *) window -> packet , strlen( window -> packet ), 
+    ret = sendto( socket_descriptor, ( const char *) window -> packet , MAXLINE, 
                   MSG_CONFIRM, (const struct sockaddr *) clientaddress, len ); 
     if (ret == -1) {
         printf("Error in function sendto (reliable_file_transfer).");
         return -1;
     }
+    printf("\n\n Retransmission of packet n° %d with content : \n %s\n\n\n", ( window -> sequence_number ) , window -> packet );                      fflush(stdout);
 
-    current_timestamp( window -> sent_timestamp );                                               //set packet's sent-timestamp.
+
+    current_timestamp( &( window -> sent_timestamp ) );                                               //set packet's sent-timestamp.
 
     return 0; 
 

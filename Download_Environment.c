@@ -318,6 +318,8 @@ int start_download( char *pathname , struct sockaddr_in *client_address, int len
 
                     tmp_worker -> client_addr = client_address;
 
+                    printf("\n Waking up Worker %d", tmp_worker -> identifier );        fflush(stdout);
+
                     ret = pthread_kill( ( tmp_worker -> tid ) , SIGUSR1 );
                     if (ret != 0) {
                         printf("Error in function: pthread_kill (start_download).");
@@ -373,15 +375,7 @@ int start_download( char *pathname , struct sockaddr_in *client_address, int len
 */
 void * work ( void * _worker ) {
 
-    sigset_t set;
-    sigemptyset( &set );
-    
-    sigaddset( &set, SIGUSR2 );
-
-    signal( SIGUSR1, wake_up);              //Set the waking up event handler.
-    signal( SIGUSR2, incoming_ack);         //Set the ACKNOWLEDGMENT event handler 
-
-    sigprocmask( SIG_BLOCK, &set, NULL );
+    signal( SIGUSR1, wake_up);
 
     int ret;
 
@@ -390,10 +384,6 @@ void * work ( void * _worker ) {
     block   * myblock = ( me -> my_block );
 
     if ( ( me -> is_working)  == '0') {
-
-        sigaddset( &set, SIGUSR1 );
-
-        sigprocmask( SIG_BLOCK, &set, NULL );
 
         goto sleep;
 
@@ -411,8 +401,6 @@ void * work ( void * _worker ) {
 
     me -> sliding_window_slot_ = get_sliding_window();
 
-    sigprocmask( SIG_UNBLOCK, &set, NULL );
-
     ret = reliable_file_forward( ( me -> identifier ), ( me -> sockfd ), ( me -> client_addr ), ( me -> len ), 
                                     ( myblock -> buffer_cache ), ( me -> sliding_window_slot_ ), &( me -> s_window_mutex ) );
     if (ret == -1) {
@@ -420,31 +408,26 @@ void * work ( void * _worker ) {
         goto redo;
     }
 
-    me -> is_working = '0';
+    me -> is_working = '0'; 
 
-    
-    sigaddset( &set, SIGUSR1 );
+    pthread_kill( myblock -> volture , SIGALRM ); 
 
-    sigprocmask( SIG_BLOCK, &set, NULL );
-
-    pthread_kill( ( myblock -> volture ), SIGALRM ); 
-    
-    sleep: 
-
-    sigpending( &set );
-
-    if ( sigismember( &set, SIGUSR1 ) ) {
-        sigprocmask( SIG_UNBLOCK, &set, NULL );
-        if ( ( myblock -> eraser ) == '1')       pthread_exit(NULL);
-    }
+    sleep:
 
     pause();
 
-    if ( ( myblock -> eraser ) == '1')       pthread_exit(NULL);
+    if ( ( myblock -> eraser ) == '1')       {
+        printf(" Worker n° %d exits.", me ->identifier ); fflush(stdout);
+        pthread_exit(NULL);
+    }
 
     myblock -> quit = '0';
 
     printf("\n WORKER %d RUNNING FOR DOWNLOAD.\n ", ( me -> identifier ) );         fflush(stdout);
+
+    signal( SIGUSR1, wake_up);
+
+    pthread_kill( me -> time_wizard, SIGUSR1 );
 
     goto redo;
 
@@ -576,67 +559,93 @@ void * time_wizard( void * _worker ){
 
     block               *myblock = wrkr -> my_block;
 
-    sw_slot             *window = wrkr -> sliding_window_slot_;
+    sw_slot             *window;
 
-    sigset_t set;
+    sigset_t            set;
+
     sigemptyset( &set );
     sigaddset( &set, SIGUSR1 ); 
-
-    signal( SIGUSR1, erase );
-
     sigprocmask( SIG_BLOCK, &set, NULL );
+
+    beginning:          
+
+    sigpending( &set );
+
+    if( sigismember( &set, SIGUSR1 ) ) {
+
+        sigemptyset( &set );
+        sigaddset( &set, SIGUSR1 ); 
+        signal( SIGUSR1, wake_up );
+        sigprocmask( SIG_UNBLOCK, &set, NULL );
+
+        if ( ( myblock -> eraser ) == '1' ) {
+            printf("\n Time Wizard exits.");            fflush(stdout);
+            pthread_exit( NULL );
+        } 
+
+    }
+
+    window = ( wrkr -> sliding_window_slot_ );
     
-    struct timespec     *now = malloc( sizeof( struct timespec ) );
-    if (now == NULL)        Error_("Error in function : malloc ( time wizard).", 1);
+    struct timespec     now = { 0, 0 };
 
-    if ( wrkr -> is_working == '0') {
+    if ( wrkr -> is_working == '0' ) {
 
-        sigpending( &set );
-        if( sigismember( &set, SIGUSR1 ) ) {
-            sigprocmask( SIG_UNBLOCK, &set, NULL );
-            if ( ( myblock -> eraser ) == '1')    pthread_exit( NULL );
-        }
-        //printf("\n TIME WIZARD %d CREATED BUT TEMPORARILY PAUSED.\n ", wrkr -> identifier ); fflush(stdout);
-        pause();                    //wait for a SIGNAL to be awaken (as well as his matched worker thread).
+        sigemptyset( &set );
+        sigaddset( &set, SIGUSR1 ); 
+        signal( SIGUSR1, wake_up );
+        sigprocmask( SIG_UNBLOCK, &set, NULL );
+
+        printf("\n Time Wizard %d going on pause.", wrkr -> identifier );                        fflush(stdout);
+
+        pause();
+
         if ( ( myblock -> eraser ) == '1')    pthread_exit( NULL );
 
-    } else{
         printf("\n TIME WIZARD %d RUNNING.\n ", ( wrkr -> identifier ) );                        fflush(stdout);
-        
-        sigpending( &set );
-        if( sigismember( &set, SIGUSR1 ) ) {
-            sigprocmask( SIG_UNBLOCK, &set, NULL );
-            if ( ( myblock -> eraser ) == '1')    pthread_exit( NULL );
-        }
-        pause();                   //wait for  a SIGNAL to be awaken (as the worker is ready to transmit).
-        if ( ( myblock -> eraser ) == '1')    pthread_exit( NULL );
+
+        sigprocmask( SIG_BLOCK, &set, NULL );
+
+    } else {
+
+        printf("\n TIME WIZARD %d RUNNING.\n ", ( wrkr -> identifier ) );                        fflush(stdout);
 
     }
 
     do {
 
+        printf(" . .");                                                                          fflush(stdout);
+
         ret = nanosleep( &beat, NULL );
         if (ret == -1)      Error_( "Error in function : nanosleep() (time_wizard).", 1);
 
-        current_timestamp( now );
+        current_timestamp( &now );
 
-        for (int i = 0; i < WINDOW_SIZE; i ++ ) {
+        for ( int i = 0; i < WINDOW_SIZE; i ++ ) {
 
-            if ( ( window -> sent_timestamp -> tv_sec != 0 )  &&  ( window -> sent_timestamp -> tv_nsec != 0 ) ) {
+            if ( 
+                ( window != NULL ) 
+            &&  ( window -> status == SENT ) ) {
                 
-                if ( nanodifftime( now, window -> sent_timestamp )  >= ( window -> timeout_interval ) ){
+                if ( nanodifftime( &now, &( window -> sent_timestamp ) )  >= ( window -> timeout_interval ) ) {
 
-                    if ( retransmission( window, ( wrkr -> sockfd ), (wrkr -> client_addr), wrkr ->len ) == -1 )     Error_("Error in function: retransmission (time_wizard).", 1);
+                    if ( retransmission( window, ( wrkr -> sockfd ), (wrkr -> client_addr), ( wrkr -> len ) ) == -1 )     Error_("Error in function: retransmission (time_wizard).", 1);
 
                 }
 
             }
 
+            if ( window == NULL ) break;
+
             window = ( window -> next );
 
         }
 
-    } while(1);
+    } while( ( wrkr -> is_working ) == '1' );
+
+    printf("\n TIME WIZARD HAS COMPLETED A CYCLE ANG GOES TO SLEEP.");      fflush(stdout);
+
+    goto beginning;
 
 }
  
@@ -662,6 +671,8 @@ void * block_volture( void * _block )  {
 
     redo:
 
+    sigemptyset( &set );
+    sigaddset( &set, SIGALRM );
     signal( SIGALRM, erase );
     sigprocmask( SIG_UNBLOCK, &set, NULL);
 
@@ -720,12 +731,6 @@ void * block_volture( void * _block )  {
 */
 int   block_eraser( block * block_to_free ){
 
-    sigset_t set;
-    sigemptyset( &set );
-    sigaddset( &set, SIGUSR1 );
-    signal( SIGALRM, erase );
-    sigprocmask( SIG_BLOCK, &set, NULL );
-
     int ret;
 
     if ( block_to_free == download_environment ) {
@@ -749,14 +754,18 @@ int   block_eraser( block * block_to_free ){
     for( int i = 0; i < MAX_WORKERS; i ++ ) {
         
         /* Free worker's attributes. */
-        //free( tmp -> client_addr );
         free( tmp -> sliding_window_slot_ );
+        
         pthread_kill( ( tmp -> tid ), SIGUSR1 );
+        printf("\nciaoneus %d.1  -  ", i); fflush(stdout); sleep(1);
         pthread_kill( ( tmp -> time_wizard ), SIGUSR1 );
+        printf("ciaoneus %d.2", i); fflush(stdout); sleep(1);
+
         /* Free the worker struct's memory space. */
         worker *quit = tmp;
         tmp = ( tmp -> next );
         free( quit );
+
     }
 
     ret = munmap( ( block_to_free -> buffer_cache ), sizeof( ( block_to_free -> buffer_cache ) ) );
