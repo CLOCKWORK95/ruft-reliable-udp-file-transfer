@@ -387,13 +387,11 @@ void * work ( void * _worker ) {
 
         goto sleep;
 
-    } else{
-
-        printf("\n WORKER %d RUNNING FOR DOWNLOAD.\n ", me -> identifier );         fflush(stdout);
-
     }
 
     redo:
+
+    printf("\n WORKER %d RUNNING FOR DOWNLOAD.\n ", ( me -> identifier ) );         fflush(stdout);
 
     myblock -> BLTC ++;
 
@@ -416,18 +414,18 @@ void * work ( void * _worker ) {
 
     pause();
 
+    signal( SIGUSR1, wake_up);
+
     if ( ( myblock -> eraser ) == '1')       {
-        printf(" Worker n° %d exits.", me ->identifier ); fflush(stdout);
+        printf(" Worker n° %d exits.", me -> identifier );                          fflush(stdout);
         pthread_exit(NULL);
     }
 
     myblock -> quit = '0';
 
-    printf("\n WORKER %d RUNNING FOR DOWNLOAD.\n ", ( me -> identifier ) );         fflush(stdout);
+    me -> is_working = '1';
 
-    signal( SIGUSR1, wake_up);
-
-    pthread_kill( me -> time_wizard, SIGUSR1 );
+    pthread_kill( ( me -> time_wizard ), SIGUSR1 );
 
     goto redo;
 
@@ -442,7 +440,7 @@ void * work ( void * _worker ) {
     each ACK is directed to a specific block's worker, and further to a specific slot of its sliding window.
     This thread is responsible for notifying workers about the received ACKs and for awakening a worker waiting for sliding his window on.
 */
-void * acknowledgment_keeper( void * _block ){
+void * acknowledgment_keeper( void * _block ) {
 
     signal( SIGUSR1, erase );
 
@@ -551,7 +549,7 @@ void * acknowledgment_keeper( void * _block ){
     If this condition is verified, then the thread executes a retransmission of the specific window slot's packet to the client.
     The sliding window is of course accessed on all of its slots.
 */
-void * time_wizard( void * _worker ){
+void * time_wizard( void * _worker ) {
 
     int                 ret;
 
@@ -579,7 +577,7 @@ void * time_wizard( void * _worker ){
         sigprocmask( SIG_UNBLOCK, &set, NULL );
 
         if ( ( myblock -> eraser ) == '1' ) {
-            printf("\n Time Wizard exits.");            fflush(stdout);
+            printf("\n Time Wizard exits.");                                                     fflush(stdout);
             pthread_exit( NULL );
         } 
 
@@ -600,8 +598,10 @@ void * time_wizard( void * _worker ){
 
         pause();
 
-        if ( ( myblock -> eraser ) == '1')    pthread_exit( NULL );
-
+        if ( ( myblock -> eraser ) == '1')    {
+            printf("\n Time Wizard %d exits.", wrkr -> identifier );                             fflush(stdout);
+            pthread_exit( NULL );
+        }
         printf("\n TIME WIZARD %d RUNNING.\n ", ( wrkr -> identifier ) );                        fflush(stdout);
 
         sigprocmask( SIG_BLOCK, &set, NULL );
@@ -643,7 +643,7 @@ void * time_wizard( void * _worker ){
 
     } while( ( wrkr -> is_working ) == '1' );
 
-    printf("\n TIME WIZARD HAS COMPLETED A CYCLE ANG GOES TO SLEEP.");      fflush(stdout);
+    printf("\n TIME WIZARD HAS COMPLETED A CYCLE ANG GOES TO SLEEP.");                           fflush(stdout);
 
     goto beginning;
 
@@ -657,7 +657,7 @@ void * time_wizard( void * _worker ){
     If that worker was the last block's worker stanting, this thread counts BLTC seconds and, if no threads have occurred
     during the countdown, the function free the block's memory space, and exits.
 */
-void * block_volture( void * _block )  {
+void * block_volture( void * _block ) {
 
     sigset_t set;
     sigemptyset( &set );
@@ -680,6 +680,8 @@ void * block_volture( void * _block )  {
 
     sigprocmask( SIG_BLOCK, &set, NULL);
 
+    block:
+
     {  
         /*  This is the check for block's erasing. if there are no running workers within the block,
             this thread is going to sleep for BLTC seconds. If still no threads are running in this block,
@@ -691,7 +693,7 @@ void * block_volture( void * _block )  {
 
         for (int i = 0; i < MAX_WORKERS; i ++ ) {
 
-            if ( tmp -> is_working == '1' ){
+            if ( tmp -> is_working == '1' ) {
 
                 flag = '1';
 
@@ -702,7 +704,7 @@ void * block_volture( void * _block )  {
         if( flag == '0') {
             /* There are no workers currently running. The countdown begins. */
 
-            printf("\n This is currently the last worker standing.\nThis Block will be erased in BLTC seconds..."); fflush(stdout);
+            printf("\n This is currently the last worker standing.\n This Block will be erased in BLTC seconds..."); fflush(stdout);
 
             myblock -> quit = '1';
 
@@ -712,9 +714,11 @@ void * block_volture( void * _block )  {
 
                 block_eraser( myblock );
 
-                if ( myblock -> eraser == '1' )   pthread_exit( NULL );
+                pthread_exit( NULL );
 
-                myblock -> quit = '0';
+            } else{
+                
+                goto block;
             }
         } 
     }
@@ -729,7 +733,7 @@ void * block_volture( void * _block )  {
 /*
     This is the function called by the block_volture to free the memory space occupied by a block (specified in block_to_free).
 */
-int   block_eraser( block * block_to_free ){
+int   block_eraser( block * block_to_free ) {
 
     int ret;
 
@@ -745,8 +749,6 @@ int   block_eraser( block * block_to_free ){
 
     block_to_free -> eraser = '1';
 
-    pthread_t this_tid = pthread_self();
-
     worker  * tmp;
 
     tmp = ( block_to_free -> workers );
@@ -754,12 +756,15 @@ int   block_eraser( block * block_to_free ){
     for( int i = 0; i < MAX_WORKERS; i ++ ) {
         
         /* Free worker's attributes. */
+
+        pthread_cancel( tmp -> time_wizard );
+        printf("\n kill %d wizard - ", i);                                          fflush(stdout); 
+        
+        pthread_cancel( tmp -> tid );
+        printf("kill %d worker\n", i);                                              fflush(stdout); 
+
         free( tmp -> sliding_window_slot_ );
         
-        pthread_kill( ( tmp -> tid ), SIGUSR1 );
-        printf("\nciaoneus %d.1  -  ", i); fflush(stdout); sleep(1);
-        pthread_kill( ( tmp -> time_wizard ), SIGUSR1 );
-        printf("ciaoneus %d.2", i); fflush(stdout); sleep(1);
 
         /* Free the worker struct's memory space. */
         worker *quit = tmp;
@@ -775,8 +780,8 @@ int   block_eraser( block * block_to_free ){
     }
 
 
-    pthread_kill( ( block_to_free -> ack_keeper ), SIGUSR1 );
-
+    pthread_cancel( block_to_free -> ack_keeper );
+    printf("kill acknowledgement keeper.\n");                                                  fflush(stdout); 
 
     /* Reassemble a "new" download environment, after this function has broke the chain of linked list. */
     
