@@ -41,6 +41,7 @@ struct file_download_infos {
 };
 
 
+
 /* THREAD FUNCTIONS DECLARATION */
 
 void * downloader( void * infos);
@@ -128,6 +129,7 @@ int main(int argc, char** argv) {
           
             scanf("%c", &c);
             while( getchar() != '\n'){};
+
             break;
 
         case GET:
@@ -141,6 +143,12 @@ int main(int argc, char** argv) {
             break;
 
         case PUT:
+
+            upload_request();
+            printf("\n\n Press a button to proceed...");
+          
+            scanf("%c", &c);
+            while( getchar() != '\n'){};
 
             break;
 
@@ -248,6 +256,11 @@ int download_request() {
 }
 
 
+
+int upload_request() {
+
+    return 0;
+}
 
 
 
