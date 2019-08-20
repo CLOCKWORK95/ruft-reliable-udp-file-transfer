@@ -78,14 +78,10 @@ typedef struct block_ {
 
 
 
-        /*  EVENT HANDLER FUNCTIONS  */
-
-void   erase( int signo ) {}
-
 int    block_eraser( block * block_to_free );
 
 
-        /*  THREADS' FUNCTIONS DECLARATION */
+        /*  THREADS' FUNCTIONS DECLARATION   */
 
 void * work( void* _worker );
 
@@ -442,7 +438,7 @@ void * work ( void * _worker ) {
 */
 void * acknowledgment_keeper( void * _block ) {
 
-    signal( SIGUSR1, erase );
+    signal( SIGUSR1, wake_up );
 
 
     int     ret,            len = sizeof( struct sockaddr_in );
@@ -673,7 +669,7 @@ void * block_volture( void * _block ) {
 
     sigemptyset( &set );
     sigaddset( &set, SIGALRM );
-    signal( SIGALRM, erase );
+    signal( SIGALRM, wake_up );
     sigprocmask( SIG_UNBLOCK, &set, NULL);
 
     pause();
