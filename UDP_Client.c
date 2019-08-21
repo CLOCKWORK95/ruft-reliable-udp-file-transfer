@@ -14,10 +14,12 @@
 int                     sockfd; 
 char                    buffer[MAXLINE],        msg[MAXLINE]; 
 struct sockaddr_in      servaddr; 
+struct sockaddr_in      upload_serv_addr;         int    upload_addr_len = sizeof( struct sockaddr_in );
 
 
 /* Initializing a pthread mutex for critical accesses on receiving window, shared by downloader and writer threads. */
 pthread_mutex_t rcv_window_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 
 
 struct file_download_infos {
@@ -59,11 +61,13 @@ int download_request();
 
 int upload_request();
 
+int initialize_upload_instance();
+
 
 
 /* WRITE SIGNAL HANDLER (SIGUSR2) */
 
-void write_sig_handler( int signo){}
+void write_sig_handler( int signo ) {}
 
 
 
@@ -90,9 +94,6 @@ void display() {
 }
 
   
-
-
-
 
 int main(int argc, char** argv) { 
 
@@ -171,13 +172,9 @@ int main(int argc, char** argv) {
 
 
 
-
-
-
 /* REQUEST FUNCTIONS IMPLEMENTATION */
 
 
-/* This function implements the list request. */
 int list_request() {
 
     int     ret,            len = sizeof( servaddr );
@@ -261,8 +258,54 @@ int download_request() {
 
 int upload_request() {
 
+    int                             ret;
+
+    char                            request[2 * MAXLINE],        filename[MAXLINE],     filetoupload[MAXLINE];
+
+
+    /* Set the request packet's fields. */
+
+    printf(" Enter the file name here : ");                                                     scanf( "%s", filename );
+
+    sprintf( request, "2/./server_directory/%s", filename );
+
+    printf(" Request content : %s\n\n", request);                                               fflush(stdout);
+
+    sprintf( filetoupload, "./client_directory/%s", filename );
+
+
+    // Sending get-request specifing the name of the file to download.
+    ret = sendto( sockfd, (const char *) request, MAXLINE, MSG_CONFIRM, (const struct sockaddr *) &(servaddr),  sizeof(servaddr) ); 
+    if (ret <= 0) {
+        printf("Error in function : sendto (download_request). errno = %d", errno );
+        return -1;
+    }
+
+    ret = recvfrom( sockfd, (char *) buffer, MAXLINE, MSG_WAITALL , ( struct sockaddr * ) &upload_serv_addr, &(upload_addr_len) );
+    if (ret <= 0) {
+        printf("\n Error in function : recvfrom (upload_request). errno %d", errno );
+        return -1;
+    }
+
+    int     identifier;
+
+    strtok( buffer, "/");
+
+    identifier = atoi( buffer );
+
+    ret = initialize_upload_instance( filetoupload, &upload_serv_addr, upload_addr_len, identifier );
+    if (ret == -1) {
+        printf("\n Error in function : initialize_upload_instance (upload_request). ");
+        return -1;
+    }
+
+    printf("\n NEW UPLOAD INSTANCE INITIALIZED.");                                                                  fflush(stdout);
+
+
     return 0;
+
 }
+
 
 
 
@@ -544,11 +587,11 @@ typedef struct upload_infos_ {
 
     struct sockaddr_in      *server_addr;                               //Address of the client who made the request.
 
+    int                     sockfd;
+
     int                     len;                                        //Client address' size.
 
-    int                     sockfd;                                     //Socket descriptor through which sending packets.
-
-    char                    uploading;                                 //'0' : sleeping   |   '1' : working.
+    char                    uploading;                                  //'0' : sleeping   |   '1' : working.
 
     sw_slot                 *sliding_window_slot_;                      //Circular linked list of sliding window's slots, related to this worker instance.
 
@@ -557,8 +600,7 @@ typedef struct upload_infos_ {
 
 
 
-
-void * work ( void * infos ) {
+void    * work ( void * infos ) {
 
     signal( SIGUSR1, wake_up);
 
@@ -607,7 +649,7 @@ void * work ( void * infos ) {
 }
 
 
-void * acknowledgment_keeper( void * infos ) {
+void    * acknowledgment_keeper( void * infos ) {
 
     signal( SIGUSR1, wake_up );
 
@@ -695,8 +737,7 @@ void * acknowledgment_keeper( void * infos ) {
 }
 
 
-
-void * time_wizard( void * infos ) {
+void    * time_wizard( void * infos ) {
 
     int                 ret;
 
@@ -774,3 +815,73 @@ void * time_wizard( void * infos ) {
 
 }
  
+
+int     initialize_upload_instance( char* pathname, struct sockaddr_in *serv_address, int len, int identifier ) {
+
+    int             fd,             filesize,                ret;
+
+    printf("\n INITIALIZE UPLOAD INSTANCE FOR FILE %s .", pathname );        fflush(stdout);
+
+    upload_infos    *infos = malloc( sizeof( upload_infos ) );
+    if (infos == NULL) {
+        printf(" Error in function : malloc (initialize_upload_instance). errno %d", errno);
+        return -1;
+    }
+
+    infos -> identifier = identifier;
+
+    infos -> sockfd = sockfd;
+
+    ret = sprintf( ( infos -> pathname), "%s", pathname );
+    if (ret == -1) {
+        printf("Error in function : sprintf (initialize_upload_instance). errno %d", errno );
+        return -1;
+    }
+
+    pthread_mutex_init( &( infos -> s_window_mutex ), NULL) ;
+
+    infos -> server_addr = serv_address;
+
+    infos -> len = len;
+
+    infos -> uploading = '1';
+
+    fd = open( pathname, O_RDONLY);
+    if (fd == -1) {
+        printf("Error in function : open (initialize_upload_instance). errno %d", errno );
+        return -1;
+    }
+
+    filesize = lseek( fd, 0, SEEK_END );
+
+    infos -> buffer_cache = (char *) mmap( NULL, filesize, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0 );
+    if ( infos -> buffer_cache == NULL ) {
+        printf("\n Error in function : mmap (initialize_upload_instance ). errno %d", errno );
+        return -1;
+    }
+
+    printf("\n Opened session on file %s.\n File charged on buffer cache.\n", pathname);               fflush(stdout);
+
+
+    ret = pthread_create( &( infos -> worker ), NULL, work, (void *) infos );
+    if (ret == -1) {
+        printf("\n Error in function : pthread_create (initialize_upload_instance). errno %d", errno );
+        return -1;
+    }
+
+    ret = pthread_create( &( infos -> time_wizard ), NULL, time_wizard, (void *) infos );
+    if (ret == -1) {
+        printf("\n Error in function : pthread_create (initialize_upload_instance). errno %d", errno );
+        return -1;
+    }
+
+    ret = pthread_create( &( infos -> ack_keeper ), NULL, acknowledgment_keeper, (void *) infos );
+    if (ret == -1) {
+        printf("\n Error in function : pthread_create (initialize_upload_instance). errno %d", errno );
+        return -1;
+    }
+
+
+    return 0;
+
+}

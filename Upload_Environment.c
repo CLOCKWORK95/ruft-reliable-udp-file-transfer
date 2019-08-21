@@ -23,7 +23,7 @@ struct upload_block {
 
     char                    ACK[ACK_SIZE]; 
 
-    struct sockaddr_in      clientaddr;                         //Current client's address.
+    struct sockaddr_in      *clientaddr;                        //Current client's address.
 
     int                     addr_len;                           //Current client address' lenght.
 
@@ -188,8 +188,6 @@ void    * uploader( void * upload_block ) {
 }
 
 
-
-
 void    * writer( void * upload_block ) {
 
     struct upload_block             *block = (struct upload_block *) upload_block;
@@ -200,7 +198,7 @@ void    * writer( void * upload_block ) {
 
     if ( block -> uploading == '0') {
 
-        signal( SIGUSR1, wake_up );
+        signal( SIGUSR2, wake_up );
 
         pause();
 
@@ -315,6 +313,10 @@ void    * writer( void * upload_block ) {
 
     block -> uploading = '0';
 
+    sigemptyset( &set );
+    sigaddset( &set, SIGUSR2 );
+    sigprocmask( SIG_UNBLOCK, &set, NULL );
+
     goto start;
 
 
@@ -370,3 +372,49 @@ int     initialize_upload_environment() {
 
 }
 
+
+
+int     start_upload( char * filepath, struct sockaddr_in *clientaddress, int len ) {
+
+    int                     ret;
+    
+    struct upload_block     *tmp;
+
+    char                    buffer[MAXLINE];
+
+    redo:                   tmp = upload_environment;
+
+    while( ( tmp -> uploading ) != '0') {
+
+        if (tmp -> next == NULL ) goto redo;
+
+        tmp = ( tmp -> next );
+
+    }
+
+    sprintf( tmp -> filepath, "%s", filepath );
+
+    tmp -> clientaddr = clientaddress;
+
+    tmp -> addr_len = len;
+
+    sprintf( buffer, "%d/", ( tmp -> identifier ) );
+
+    printf("\n Buffer content : %s", buffer); fflush(stdout);
+
+    ret = sendto( ( tmp -> sockfd ), (char *) buffer, MAXLINE, MSG_CONFIRM, (struct sockaddr *) ( tmp -> clientaddr ), ( tmp -> addr_len ) ); 
+    if (ret <= 0) {
+        printf("\n Error in function : sendto (start_upload). errno %d", errno );
+        return -1;
+    }
+
+    tmp -> uploading = '1'; 
+
+    pthread_kill( ( tmp -> uploader ), SIGUSR1 );
+
+    pthread_kill( ( tmp -> writer ), SIGUSR2 );
+
+
+    return 0;
+
+}

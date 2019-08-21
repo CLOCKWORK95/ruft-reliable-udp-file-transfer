@@ -100,7 +100,7 @@ void * block_volture( void * _block );
     and a new operating socket. This function activates a first thread, serving the request the function has been called to.  
     Returns : 0 on success, -1 on Error.
 */
-int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *client_address , int len ){ 
+int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *client_address , int len ) { 
 
     printf(" :: ALLOCATE NEW BLOCK FUNCTION :: \n");
 

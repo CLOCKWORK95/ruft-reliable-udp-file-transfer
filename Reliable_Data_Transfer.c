@@ -223,7 +223,7 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
     sigprocmask( SIG_BLOCK, &set, NULL);
     signal( SIGUSR2, incoming_ack);
 
-    printf("\n Sending Download informations to the client..." ); fflush( stdout ); 
+    printf("\n Sending transfer informations to the client..." ); fflush( stdout ); 
 
     /*  Send worker identifier and total file size to the client, so that it could actually start (and finish!) this file download instance.  */
     sprintf( packet, "%d/%d/", identifier, filesize );

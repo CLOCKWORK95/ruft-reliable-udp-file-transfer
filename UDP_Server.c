@@ -2,6 +2,7 @@
 
 #include "header.h"
 #include "Download_Environment.c"
+#include "Upload_Environment.c"
 #include "Reliable_Data_Transfer.c"
 
 #define PORT     5193
@@ -63,6 +64,7 @@ int     current_dir_size();
 
 char    *load_dir( int size );
 
+int     initialize_upload_environment();
 
 /* RECEPTIONIST THREAD FUNCTION DECLARATION */
 
@@ -81,10 +83,10 @@ int main(int argc, char ** argv) {
     int ret;
 
     /* Load the current directory list on RAM to be ready for using.  */
-    printf("\nRUFT SERVER TURNED ON.\nloading directory file list on buffer cache...");
+    printf( "\n RUFT SERVER TURNED ON.\n Loading directory file list on buffer cache..." );
     int dir_size = current_dir_size();
     list = load_dir( dir_size );
-    printf("done. Current directory content is :\n\n%s\n", list);
+    printf("done.\n Current directory content is :\n\n%s\n", list );        fflush(stdout);
       
 
     /* Creating socket file descriptor */ 
@@ -109,6 +111,14 @@ int main(int argc, char ** argv) {
     /* Validate the first struct client_ instance of clients dynamic liked list, to be filled by new requests infos. */
     clients = malloc( sizeof( struct client_ ) );  
     if ( clients == NULL )      Error_("Error in function : malloc (main.)", 1);
+
+    /* Initialization of Upload Environment. */
+
+    ret = initialize_upload_environment();
+    if (ret == -1) {
+        printf("\n Error in function : initialize_upload_environment (main).");
+        return -1;
+    }
 
 
     /* Initialization of Download Environment, by validating memory area for its first block and for the block's first worker. */            
@@ -259,13 +269,13 @@ void * receptionist( void * client_infos ) {
 
     /* Elaborates the incoming request packet and switch the operations. */
 
-    char            *tmp;                              int             request_type;
+    char            *tmp;                              int              request_type;
 
     tmp =  strtok( ( my_client -> incoming_request ), "/" );            request_type = atoi( tmp );
 
     switch( request_type ) {
 
-        case LIST:     /* LIST request */                
+        case LIST:     /* LIST request          */                
 
             sprintf( ( my_client -> buffer ), "%ld", strlen(list) );
 
@@ -281,13 +291,21 @@ void * receptionist( void * client_infos ) {
 
             my_client -> pathname = strtok( tmp, "-" );
 
-            //if ( sprintf( my_client -> pathname, "%s", tmp) == -1)       Error_("Error in function : sprintf (receptionist).", 1);
-
-            if ( start_download( ( my_client -> pathname ), &( my_client -> client_address ), my_client -> len ) == -1 )     Error_("Error in function : start download (receptionist).", 1);
+            if ( start_download( ( my_client -> pathname ), &( my_client -> client_address ), my_client -> len ) == -1 )     
+                                                                Error_("Error in function : start download (receptionist).", 1);
 
             break;
 
-        case PUT:
+        case PUT:     /* PUT (UPLOAD) request    */
+
+            tmp = ( my_client -> incoming_request ) + (strlen(tmp) + 1 );       
+
+            printf(" pathname received is : %s\n\n", tmp ); fflush(stdout);
+
+            my_client -> pathname = strtok( tmp, "-" );
+
+            if ( start_upload( ( my_client -> pathname ), &( my_client -> client_address ), my_client -> len ) == -1 )     
+                                                                Error_("Error in function : start upload (receptionist).", 1);
 
             break;
 
@@ -296,5 +314,7 @@ void * receptionist( void * client_infos ) {
             break;
 
     }
+
+    pthread_exit( NULL );
 
 }
