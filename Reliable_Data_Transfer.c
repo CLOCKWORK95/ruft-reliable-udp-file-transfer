@@ -5,7 +5,7 @@
 
 /* RDT CONFIGURABLE PARAMETERS */
 
-#define LOSS_PROBABILITY    6
+#define LOSS_PROBABILITY    0
 
 #define WINDOW_SIZE         7
 

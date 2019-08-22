@@ -67,17 +67,6 @@ void    * uploader( void * upload_block ) {
         goto start;
     }
 
-    // if ( block -> uploading == '0') {
-
-    //     printf("\n UPLOADER GOING TO SLEEP.");                                                          fflush(stdout);
-
-    //     signal( SIGUSR1, wake_up );
-
-    //     pause();
-
-    // }
-
-
     // Upload File.
 
     printf("\n PREPEARING TO UPLOAD...\n Getting informations about the uploading file...");            fflush(stdout);

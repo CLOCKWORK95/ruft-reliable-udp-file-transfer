@@ -316,7 +316,7 @@ int upload_request() {
 
 void * downloader( void * infos_ ){
 
-    int                             ret,            counter = 0;
+    int                             ret,            counter = 0,               num;
 
     struct file_download_infos      *infos = (struct file_download_infos *) infos_;
 
@@ -358,6 +358,8 @@ void * downloader( void * infos_ ){
 
         printf("\n  DOWNLOAD IN PROGRESS... ");                                                         fflush(stdout);
 
+        loss:
+
         ret = recvfrom( sockfd, (char *) rcv_buffer, MAXLINE,  MSG_WAITALL, 
                         (struct sockaddr *) &( infos -> dwld_servaddr ), &( infos -> dwld_serv_len ) ); 
         if (ret <= 0)       Error_("Error in function : recvfrom (downloader).", 1);
@@ -365,6 +367,8 @@ void * downloader( void * infos_ ){
         char    *idtf;                          idtf = strtok( rcv_buffer, "/");
         int     identifier = atoi( idtf );
 
+        num = ( rand() % 100 ) + 1; 
+        if( num <= LOSS_PROBABILITY ) goto loss;
         
         if ( identifier == ( infos -> identifier ) ) {
 

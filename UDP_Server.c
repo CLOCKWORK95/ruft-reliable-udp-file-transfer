@@ -44,7 +44,7 @@ struct client_ {
 
 
 /* This is a buffer cache containing all file names stored in RUFT Server's directory. */
-char *                  list;
+char *                   list;
 
 
 
@@ -271,11 +271,16 @@ void * receptionist( void * client_infos ) {
 
     char            *tmp;                              int              request_type;
 
+    int             dir_size;
+
     tmp =  strtok( ( my_client -> incoming_request ), "/" );            request_type = atoi( tmp );
 
     switch( request_type ) {
 
-        case LIST:     /* LIST request          */                
+        case LIST:     /* LIST request          */     
+ 
+            dir_size = current_dir_size();                              // update the list before forwanding it.
+            list = load_dir( dir_size );           
 
             sprintf( ( my_client -> buffer ), "%ld", strlen(list) );
 

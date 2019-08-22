@@ -620,8 +620,8 @@ void * time_wizard( void * _worker ) {
         for ( int i = 0; i < WINDOW_SIZE; i ++ ) {
 
             if ( 
-                ( window != NULL ) 
-            &&  ( window -> status == SENT ) ) {
+                ( window != NULL ) &&  
+                ( window -> status == SENT ) ) {
                 
                 if ( nanodifftime( &now, &( window -> sent_timestamp ) )  >= ( window -> timeout_interval ) ) {
 
