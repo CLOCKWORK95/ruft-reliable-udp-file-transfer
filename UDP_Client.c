@@ -14,7 +14,6 @@
 int                     sockfd; 
 char                    buffer[MAXLINE],        msg[MAXLINE]; 
 struct sockaddr_in      servaddr; 
-struct sockaddr_in      upload_serv_addr;         int    upload_addr_len = sizeof( struct sockaddr_in );
 
 
 /* Initializing a pthread mutex for critical accesses on receiving window, shared by downloader and writer threads. */
@@ -260,21 +259,23 @@ int upload_request() {
 
     int                             ret;
 
-    char                            request[2 * MAXLINE],        filename[MAXLINE],     filetoupload[MAXLINE];
+    char                            request[2 * MAXLINE],        filename[MAXLINE],              filetoupload[MAXLINE];
+
+    struct sockaddr_in              upload_serv_addr;            int    upload_addr_len = sizeof( struct sockaddr_in );
 
 
     /* Set the request packet's fields. */
 
-    printf(" Enter the file name here : ");                                                     scanf( "%s", filename );
+    printf(" Enter the file name here : ");                                                    scanf( "%s", filename );
 
     sprintf( request, "2/./server_directory/%s", filename );
 
-    printf(" Request content : %s\n\n", request);                                               fflush(stdout);
+    printf(" Request content : %s\n\n", request);                                                       fflush(stdout);
 
     sprintf( filetoupload, "./client_directory/%s", filename );
 
 
-    // Sending get-request specifing the name of the file to download.
+    // Sending put-request specifing the name of the file to upload.
     ret = sendto( sockfd, (const char *) request, MAXLINE, MSG_CONFIRM, (const struct sockaddr *) &(servaddr),  sizeof(servaddr) ); 
     if (ret <= 0) {
         printf("Error in function : sendto (download_request). errno = %d", errno );
@@ -286,6 +287,7 @@ int upload_request() {
         printf("\n Error in function : recvfrom (upload_request). errno %d", errno );
         return -1;
     }
+
 
     int     identifier;
 
@@ -299,7 +301,7 @@ int upload_request() {
         return -1;
     }
 
-    printf("\n NEW UPLOAD INSTANCE INITIALIZED.");                                                                  fflush(stdout);
+    printf("\n NEW UPLOAD INSTANCE INITIALIZED.");                                                       fflush(stdout);
 
 
     return 0;
@@ -602,23 +604,11 @@ typedef struct upload_infos_ {
 
 void    * work ( void * infos ) {
 
-    signal( SIGUSR1, wake_up);
-
     int ret;
 
     upload_infos        *info = ( upload_infos * ) infos;
 
-    if ( ( info -> uploading )  == '0') {
-
-        goto sleep;
-
-    }
-
-    redo:
-
     printf("\n WORKER RUNNING FOR UPLOAD.\n " );         fflush(stdout);
-
-    
 
     free( info -> sliding_window_slot_ );
 
@@ -627,32 +617,22 @@ void    * work ( void * infos ) {
     ret = reliable_file_forward( ( info -> identifier ), ( info -> sockfd ), ( info -> server_addr ), ( info -> len ), 
                                     ( info -> buffer_cache ), ( info -> sliding_window_slot_ ), &( info -> s_window_mutex ) );
     if (ret == -1) {
-        printf("Error in function : reliable_file forward.");
-        goto redo;
+        printf("Error in function : reliable_file forward (worker thread).");
+        pthread_exit( NULL );
     }
 
-    info -> uploading = '0'; 
+    printf("\n UPLOAD COMPLETE.");  fflush(stdout);
 
-    sleep:
+    info -> uploading = '0';
 
-    pause();
+    pthread_cancel( info -> ack_keeper );
 
-    signal( SIGUSR1, wake_up);
-
-    info -> uploading = '1';
-
-    pthread_kill( ( info -> time_wizard ), SIGUSR1 );
-
-    goto redo;
-
+    pthread_exit( NULL );
 
 }
 
 
 void    * acknowledgment_keeper( void * infos ) {
-
-    signal( SIGUSR1, wake_up );
-
 
     int     ret,            len = sizeof( struct sockaddr_in );
 
@@ -669,13 +649,15 @@ void    * acknowledgment_keeper( void * infos ) {
 
     do {
 
+        if( ( info -> uploading ) == '0')                                break;
+
         /*  Receive a packet (acknowledgments) from related block's socket.  */
 
-        struct sockaddr_in     client_address;
+        struct sockaddr_in     upload_server_address;
 
         memset( buffer, 0, sizeof( buffer ) );
 
-        ret = recvfrom( info -> sockfd, (char *) buffer, MAXLINE , MSG_WAITALL, ( struct sockaddr *) &client_address, &len); 
+        ret = recvfrom( info -> sockfd, (char *) buffer, MAXLINE , MSG_WAITALL, ( struct sockaddr *) &upload_server_address, &len); 
         if (ret <= 0) {
             printf("\n ACK KEEPER EXITS...");
             pthread_exit( NULL );
@@ -732,6 +714,8 @@ void    * acknowledgment_keeper( void * infos ) {
 
     } while ( 1 );
 
+    printf("\n ACK KEEPER HAS COMPLETED ITS TASK.");                    fflush(stdout);
+
     pthread_exit( NULL );
 
 }
@@ -739,48 +723,17 @@ void    * acknowledgment_keeper( void * infos ) {
 
 void    * time_wizard( void * infos ) {
 
-    int                 ret;
+    printf("\n TIME WIZARD RUNNING.\n " );                                              fflush(stdout);
 
-    upload_infos        *info = ( upload_infos * ) infos;
-
-    sw_slot             *window;
-
-    sigset_t            set;
-
-    sigemptyset( &set );
-    sigaddset( &set, SIGUSR1 ); 
-    sigprocmask( SIG_BLOCK, &set, NULL );
-
-    beginning:          
-
-    window = ( info -> sliding_window_slot_ );
+    int                 ret;            upload_infos        *info = ( upload_infos * ) infos;           
+    
+    sw_slot             *window;                            window = ( info -> sliding_window_slot_ );
     
     struct timespec     now = { 0, 0 };
 
-    if ( info -> uploading == '0' ) {
-
-        sigemptyset( &set );
-        sigaddset( &set, SIGUSR1 ); 
-        signal( SIGUSR1, wake_up );
-        sigprocmask( SIG_UNBLOCK, &set, NULL );
-
-        printf("\n Time Wizard going on pause." );                                  fflush(stdout);
-
-        pause();
-
-        printf("\n TIME WIZARD RUNNING.\n " );                                      fflush(stdout);
-
-        sigprocmask( SIG_BLOCK, &set, NULL );
-
-    } else {
-
-        printf("\n TIME WIZARD RUNNING.\n " );                                      fflush(stdout);
-
-    }
-
     do {
 
-        printf(" . .");                                                             fflush(stdout);
+        printf(" . .");                                                                 fflush(stdout);
 
         ret = nanosleep( &beat, NULL );
         if (ret == -1)      Error_( "Error in function : nanosleep() (time_wizard).", 1);
@@ -809,9 +762,11 @@ void    * time_wizard( void * infos ) {
 
     } while( ( info -> uploading ) == '1' );
 
-    printf("\n TIME WIZARD HAS COMPLETED A CYCLE ANG GOES TO SLEEP.");                           fflush(stdout);
+    printf("\n TIME WIZARD HAS COMPLETED ITS TASK.");               fflush(stdout);
 
-    goto beginning;
+    free( info );
+
+    pthread_exit( NULL );
 
 }
  
@@ -860,7 +815,8 @@ int     initialize_upload_instance( char* pathname, struct sockaddr_in *serv_add
         return -1;
     }
 
-    printf("\n Opened session on file %s.\n File charged on buffer cache.\n", pathname);               fflush(stdout);
+    printf("\n Opened session on file %s.\n File charged on buffer cache.\n", pathname);                  
+    fflush(stdout);
 
 
     ret = pthread_create( &( infos -> worker ), NULL, work, (void *) infos );

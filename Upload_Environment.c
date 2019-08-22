@@ -35,6 +35,8 @@ struct upload_block {
 
     char                    uploading;
 
+    int                     sem_id;
+
     struct upload_block     *next;
 
 };                                                                  struct upload_block         *upload_environment;
@@ -43,21 +45,37 @@ struct upload_block {
 
 void    * uploader( void * upload_block ) {
 
-    int                             ret,            counter = 0;
+    int                             ret,                              counter = 0;
 
     struct upload_block             *block = (struct upload_block *) upload_block;
 
     char                            rcv_buffer[MAXLINE];
 
+    struct sembuf oper;
+
     start: 
 
-    if ( block -> uploading == '0') {
+    counter = 0;
 
-        signal( SIGUSR1, wake_up );
+    oper.sem_flg = 0;
+    oper.sem_num = 0;
+    oper.sem_op = -1;
 
-        pause();
-
+    ret = semop( block -> sem_id, &oper, 1 );
+    if (ret == -1) {
+        printf("\n Error in function semop (uploader). errno %d", errno );
+        goto start;
     }
+
+    // if ( block -> uploading == '0') {
+
+    //     printf("\n UPLOADER GOING TO SLEEP.");                                                          fflush(stdout);
+
+    //     signal( SIGUSR1, wake_up );
+
+    //     pause();
+
+    // }
 
 
     // Upload File.
@@ -190,18 +208,22 @@ void    * uploader( void * upload_block ) {
 
 void    * writer( void * upload_block ) {
 
+    int ret;
+
     struct upload_block             *block = (struct upload_block *) upload_block;
 
-    sigset_t    set;
+    sigset_t    set;                struct sembuf oper;
 
     start:
 
-    if ( block -> uploading == '0') {
+    oper.sem_num = 1;
+    oper.sem_op = -1;
+    oper.sem_flg = 0;
 
-        signal( SIGUSR2, wake_up );
-
-        pause();
-
+    ret = semop( block -> sem_id, &oper, 1 );
+    if (ret == -1) {
+        printf("\n Error in funciton : semop (writer). errno %d", errno);
+        goto start;
     }
 
 
@@ -210,7 +232,7 @@ void    * writer( void * upload_block ) {
     sigaddset( &set, SIGUSR2);
     sigprocmask( SIG_BLOCK, &set, NULL );
 
-    int                                         ret,            file_descriptor,            counter = 0;
+    int            file_descriptor,            counter = 0;
 
     /* Create the new file in client's directory or truncate an existing one with the same pathname, to start download. */
     file_descriptor = open( ( block -> filepath ), O_RDWR | O_CREAT , 0660 );  
@@ -256,7 +278,7 @@ void    * writer( void * upload_block ) {
         /* Temporarily block SIGUSR2 signal occurrences. */
         sigprocmask( SIG_BLOCK, &set, NULL );
 
-        printf( "\n WRITER AWAKED" );                                      fflush(stdout);
+        printf( "\n WRITER AWAKED" );                                       fflush(stdout);
 
         {   
             /*  THIS IS A CRITIAL SECTION FOR RECEIVING WINDOWS ACCESS ON WRITING. 
@@ -281,7 +303,7 @@ void    * writer( void * upload_block ) {
                 if ( ret == -1)         Error_( "Error in function : write (thread writer).", 1);
 
                 printf( "\n Packet %d content has been written on file %s. %d bytes written .", 
-                                            ( curr_first -> sequence_number ), ( block -> filepath ), ret );            fflush(stdout);
+                                            ( curr_first -> sequence_number ), ( block -> filepath ), ret );             fflush(stdout);
 
 
                 /* Slide the receiving window on. */
@@ -303,6 +325,8 @@ void    * writer( void * upload_block ) {
 
             if ( pthread_mutex_unlock( &rcv_window_mutex ) == -1 )        Error_("Error in function : pthread_mutex_unlock (writer).", 1);
 
+            printf("\n WRITER HAS COMPLETED ITS TASK AND GOES TO SLEEP.");                                                 fflush(stdout);
+
             /* END OF THE CRITICAL SECTION. */
 
         }
@@ -312,10 +336,6 @@ void    * writer( void * upload_block ) {
     } while (1);
 
     block -> uploading = '0';
-
-    sigemptyset( &set );
-    sigaddset( &set, SIGUSR2 );
-    sigprocmask( SIG_UNBLOCK, &set, NULL );
 
     goto start;
 
@@ -345,6 +365,26 @@ int     initialize_upload_environment() {
             perror("\n socket creation failed (init new block)."); 
             return -1; 
         } 
+
+
+        tmp -> sem_id = semget( IPC_PRIVATE, 2, O_CREAT | 0660 );
+        if (tmp -> sem_id == -1) {
+            printf("\n Error in function : semget (itinialize_upload_environment). errno %d", errno);
+            return -1;
+        }
+
+        ret = semctl( tmp -> sem_id, 0, SETVAL, 0 );
+        if (ret == -1) {
+            printf("\n Error in function : semctl (initialize_upload_instance). errno %d", errno);
+            return -1;
+        }
+
+        ret = semctl( tmp -> sem_id, 1, SETVAL, 0 );
+        if (ret == -1) {
+            printf("\n Error in function : semctl (initialize_upload_instance). errno %d", errno);
+            return -1;
+        }
+
 
         tmp -> identifier = i;
 
@@ -376,11 +416,12 @@ int     initialize_upload_environment() {
 
 int     start_upload( char * filepath, struct sockaddr_in *clientaddress, int len ) {
 
-    int                     ret;
+    int                     ret;                    struct upload_block     *tmp;       
     
-    struct upload_block     *tmp;
-
     char                    buffer[MAXLINE];
+
+    struct sembuf oper;     oper.sem_flg = 0;       oper.sem_op = 1;
+
 
     redo:                   tmp = upload_environment;
 
@@ -410,9 +451,19 @@ int     start_upload( char * filepath, struct sockaddr_in *clientaddress, int le
 
     tmp -> uploading = '1'; 
 
-    pthread_kill( ( tmp -> uploader ), SIGUSR1 );
 
-    pthread_kill( ( tmp -> writer ), SIGUSR2 );
+    oper.sem_num = 0;
+    ret = semop( tmp -> sem_id, &oper, 1 );
+    if (ret == -1) {
+        printf("\n Error in function semop (start_upload). errno %d", errno );
+        return -1;
+    }
+    oper.sem_num = 1;
+    ret = semop( tmp -> sem_id, &oper, 1 );
+    if (ret == -1) {
+        printf("\n Error in function semop (start_upload). errno %d", errno );
+        return -1;
+    }
 
 
     return 0;

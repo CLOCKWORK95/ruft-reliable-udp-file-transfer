@@ -16,6 +16,9 @@
 #include <time.h>
 #include <sys/mman.h>
 #include <errno.h>
+#include <sys/sem.h>
+#include <sys/ipc.h>
+
 
 #define Error_(x,y)     { puts(x); exit(y); }
 #define MAXLINE 1024 
