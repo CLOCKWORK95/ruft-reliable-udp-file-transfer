@@ -251,9 +251,10 @@ int     list_request_handler( struct client_ * client_infos ) {
 
 
 /*
-    This is the RECEPTIONIST thread function. A new receptionist thread is created whenever a new request reaches the RUFT server side,
-    in order to let the server receiving new requests while this thread is working on this one.
-    This function takes as unique parameter a struct client_ in which all client's infos are stored at runtime, at the moment of request's reception.
+    This is the RECEPTIONIST thread function. A new receptionist thread is created whenever a 
+    new request reaches the RUFT server side, in order to let the server receiving new requests while 
+    this thread is working on this one. This function takes as unique parameter a struct client_ 
+    in which all client's infos are stored at runtime, at the moment of request's reception.
     This function reads the request and acts different actions depending on request's type.
 */
 void    * receptionist( void * client_infos ) {
