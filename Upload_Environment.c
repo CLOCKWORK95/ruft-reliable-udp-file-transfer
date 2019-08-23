@@ -9,40 +9,49 @@
 pthread_mutex_t rcv_window_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
-/*  SERVER SIDE implementation of RUFT Upload Environment. 
-    The following structures are used to receive data from clients uploading files on server's directory.  */
+/*  
+    SERVER SIDE implementation of RUFT Upload Environment. 
+    The following structures are used to receive data from clients uploading files on server's directory.  
+*/
 
 
 struct upload_block {
 
-    int                     sockfd;                             //Socket descriptor for this upload block.
+    int                     sockfd;                             // Socket descriptor for this upload block.
 
-    int                     identifier;                         //Identifier code for this upload block.
+    int                     identifier;                         // Identifier code for this upload block.
 
-    char                    filepath[MAXLINE];                  //Current file pathname ( variable for each upload instance).
+    char                    filepath[MAXLINE];                  // Current file pathname ( variable for each upload instance).
 
-    char                    ACK[ACK_SIZE]; 
+    char                    ACK[ACK_SIZE];                      // Buffer used to write and send acknowledgements.
 
-    struct sockaddr_in      *clientaddr;                        //Current client's address.
+    struct sockaddr_in      *clientaddr;                        // Current client's address.
 
-    int                     addr_len;                           //Current client address' lenght.
+    int                     addr_len;                           // Current client address' lenght.
 
-    pthread_t               uploader;
+    pthread_t               uploader;                           // Uploader thread identifier.
 
-    pthread_t               writer;
+    pthread_t               writer;                             // Writer thread identifier.
 
-    rw_slot                 *rcv_wnd;
+    rw_slot                 *rcv_wnd;                           // Pointer to the current block's receiving window.
 
-    char                    uploading;
+    char                    uploading;                          // Flag that represents the current state of this upload block (waiting or uploading).
 
-    int                     sem_id;
+    int                     sem_id;                             // Semaphore array identifier. This is used to handle uploader and writer thread's start.
 
-    struct upload_block     *next;
+    struct upload_block     *next;                              // Pointer to the next block of Upload Environment's pool.
 
 };                                                                  struct upload_block         *upload_environment;
 
 
 
+/*  
+    This is a thread function. The Uploader thread is always coupled with a Writer thread. 
+    Each Uploader has the responsibility to operate an upload of a file from a remote client. 
+    The Uploader receives data packets and transmit acknowledgements, in order to ensure reliable file transfer.
+    Each Uploader communicates with its Writer, making him transcribing all packet's data in a persistent file on server's directory. 
+    After the Upload is complete, this thread is blocked and waits to be signaled for a following new upload occurrence.
+*/
 void    * uploader( void * upload_block ) {
 
     int                             ret,              num,            counter = 0;
@@ -200,6 +209,11 @@ void    * uploader( void * upload_block ) {
 }
 
 
+/*  
+    This is a thread function. The Writer thread is always coupled with an Uploader thread.
+    Each Writer has the responsibility of writing data coming from the client in a persistent file on server's directory.
+    After the Upload is complete, this thread is blocked and waits to be signaled for a following new upload occurrence.
+*/
 void    * writer( void * upload_block ) {
 
     int ret;
@@ -337,8 +351,11 @@ void    * writer( void * upload_block ) {
 }
 
 
-
-
+/*
+    By this function, RUFT Server initiates the Upload Environment. 
+    It consists in a thread pool of size POOLSIZE: once initialized, POOLSIZE 'uploader' and 'writer' threads are launched, 
+    and wait for new upload occurrences. A new upload occurrence is signaled by function "start_upload".
+*/
 int     initialize_upload_environment() {
 
     int                     ret;
@@ -407,7 +424,11 @@ int     initialize_upload_environment() {
 }
 
 
-
+/*
+    This function is called by RUFT Server's receptionist, to serve a new PUT (upload) request.
+    By this function, a waiting slot of upload environment is updated with the new request's informations, and the respective
+    couple of waiting uploader&writer threads is signaled to serve the upload request.
+*/
 int     start_upload( char * filepath, struct sockaddr_in *clientaddress, int len ) {
 
     int                     ret;                    struct upload_block     *tmp;       

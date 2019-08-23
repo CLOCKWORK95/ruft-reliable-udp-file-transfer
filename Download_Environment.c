@@ -17,27 +17,27 @@ struct block_;
 */
 typedef struct worker_{
 
-    pthread_mutex_t         s_window_mutex;
+    pthread_mutex_t         s_window_mutex;                             // Mutex for the concurrent access to the sliding window, shared by worker and ack_keeper.
 
-    pthread_t               time_wizard;                                //Thread Identifier of this worker's Time_Wizard (who handles timeout-retransmission).
+    pthread_t               time_wizard;                                // Thread Identifier of this worker's Time_Wizard (who handles timeout-retransmission).
 
-    int                     identifier;                                 //Unique identifier of the worker of a block, to receive ACKs.
+    int                     identifier;                                 // Unique identifier of the worker of a block, to receive ACKs.
 
-    struct block_           *my_block;                                  //The block containing this worker instance.
+    struct block_           *my_block;                                  // The block containing this worker instance.
 
-    pthread_t               tid;                                        //Identifier of the working-thread.
+    pthread_t               tid;                                        // Identifier of the working-thread.
 
-    struct sockaddr_in      *client_addr;                               //Address of the client who made the request.
+    struct sockaddr_in      *client_addr;                               // Address of the client who made the request.
 
-    int                     len;                                        //Client address' size.
+    int                     len;                                        // Client address' size.
 
-    int                     sockfd;                                     //Socket descriptor through which sending packets.
+    int                     sockfd;                                     // Socket descriptor through which sending packets.
 
-    char                    is_working;                                 //'0' : sleeping   |   '1' : working.
+    char                    is_working;                                 // '0' : sleeping   |   '1' : working.
 
-    sw_slot                 *sliding_window_slot_;                      //Circular linked list of sliding window's slots, related to this worker instance.
+    sw_slot                 *sliding_window_slot_;                      // Circular linked list of sliding window's slots, related to this worker instance.
 
-    struct worker_          *next;                                      //Pointer to the next worker of the same block (NULL if this is the last worker).
+    struct worker_          *next;                                      // Pointer to the next worker of the same block (NULL if this is the last worker).
 
 }               worker;
 
@@ -53,25 +53,25 @@ typedef struct worker_{
 */
 typedef struct block_ {
 
-    char                    *filename;                                  //Name of the file associated to this block.
+    char                    *filename;                                  // Name of the file associated to this block.
 
-    char                    *buffer_cache;                              //Buffer cache containing the file to transmit.
+    char                    *buffer_cache;                              // Buffer cache containing the file to transmit.
 
-    int                     server_sock_desc;                           //Block's (new) socket descriptor.
+    int                     server_sock_desc;                           // Block's (new) socket descriptor.
 
-    worker                  *workers;                                   //Array of block's workers. 
+    worker                  *workers;                                   // Array of block's workers. 
 
-    pthread_t               ack_keeper;                                 //Acknowledgments keeper and demultiplexer thread's TID.
+    pthread_t               ack_keeper;                                 // Acknowledgments keeper and demultiplexer thread's TID.
 
-    pthread_t               volture;                                    //Block's killer id.
+    pthread_t               volture;                                    // Block's killer id.
 
-    struct block_           *next;                                      //Pointer to next block structure.
+    struct block_           *next;                                      // Pointer to next block structure.
 
-    int                     BLTC;                                       //Block Life Timer Countdown.
+    int                     BLTC;                                       // Block Life Timer Countdown.
 
-    char                    eraser;                                     // '0' : live    | '1' : free.
+    char                    eraser;                                     //  '0' : live    | '1' : free.
 
-    char                    quit;                                       // '0' : live    | '1' : free.
+    char                    quit;                                       //  '0' : live    | '1' : free.
 
 
 }               block;                                                  block        *download_environment;
