@@ -85,7 +85,8 @@ void    * uploader( void * upload_block ) {
     block -> addr_len = sizeof( struct sockaddr_in );
 
     /* Receive the file size and the identifier of server worker matched to this download instance. */
-    ret = recvfrom( block -> sockfd, (char *) rcv_buffer, MAXLINE,  MSG_WAITALL, (struct sockaddr *) &( block -> clientaddr ), &( block -> addr_len ) ); 
+    ret = recvfrom( ( block -> sockfd ), (char *) rcv_buffer, MAXLINE,  MSG_WAITALL, 
+                    (struct sockaddr *) &( block -> clientaddr ), &( block -> addr_len ) ); 
     if (ret <= 0)       Error_("Error in function : recvfrom (downloader).", 1);
 
     printf("\n RECEIVED infos : %s", rcv_buffer );                                                      fflush(stdout); 
@@ -127,7 +128,8 @@ void    * uploader( void * upload_block ) {
             /*  THIS IS A CRITIAL SECTION FOR RECEIVING WINDOWS ACCESS ON WRITING. 
                 DOWNLOADER THREAD TAKES A TOKEN FROM MUTEX TO RUN THIS CODE BLOCK. */
 
-            if ( pthread_mutex_lock( &rcv_window_mutex ) == -1 )        Error_("Error in function : pthread_mutex_lock (uploader).", 1);
+            if ( pthread_mutex_lock( &rcv_window_mutex ) == -1 )        
+                                    Error_("Error in function : pthread_mutex_lock (uploader).", 1);
 
             rw_slot     *wnd_tmp = ( block -> rcv_wnd );
 
@@ -135,11 +137,14 @@ void    * uploader( void * upload_block ) {
 
             int         sequence_number = atoi( sn );
 
-            printf("\n --> Arrived packet with sequence number : %d .", sequence_number);               fflush(stdout);
+            printf("\033[01;34m");
+            printf("\n --> ARRIVED PACKET WITH SEQUENCE NUMBER : %d .", sequence_number);               fflush(stdout);
+            printf("\033[0m");
 
             for (int i = 0; i < WINDOW_SIZE; i++) {
 
-                printf("\n wnd_tmp->sequence_number=%d  sequence_number=%d", wnd_tmp -> sequence_number, sequence_number); fflush(stdout);
+                printf("\n wnd_tmp->sequence_number=%d  sequence_number=%d", 
+                                ( wnd_tmp -> sequence_number ), sequence_number);                       fflush(stdout);
 
                 if ( wnd_tmp -> sequence_number == sequence_number ) {
 
@@ -147,7 +152,9 @@ void    * uploader( void * upload_block ) {
 
                     sprintf( ( block -> ACK ), "%d/%d/", identifier, sequence_number );
 
+                    printf("\033[01;32m");
                     printf(" SENDING ACK : %s", block -> ACK);
+                    printf("\033[0m");
 
                     ret = sendto( block -> sockfd, (const char *) ( block -> ACK ), MAXLINE, MSG_CONFIRM, 
                                  (const struct sockaddr *) &( block -> clientaddr ), block -> addr_len ); 
@@ -170,11 +177,13 @@ void    * uploader( void * upload_block ) {
 
                         printf( "\n SENDING SIGNAL TO WRITER FOR PACKET %d", sequence_number );      fflush(stdout); 
 
-                        /* If this is the first slot of the window, then alert the writer about it (SIGUSR2) so that it could slide the rcv_window on. */
+                        /*  If this is the first slot of the window, then alert the writer about it (SIGUSR2) 
+                            so that it could slide the rcv_window on.    */
 
                         pthread_kill( block -> writer, SIGUSR2 );
 
-                        if ( pthread_mutex_unlock( &rcv_window_mutex ) == -1 )        Error_("Error in function : pthread_mutex_unlock (uploader).", 1);
+                        if ( pthread_mutex_unlock( &rcv_window_mutex ) == -1 )        
+                                                        Error_("Error in function : pthread_mutex_unlock (uploader).", 1);
 
                     }
 
@@ -185,7 +194,8 @@ void    * uploader( void * upload_block ) {
 
             }
 
-            if ( pthread_mutex_unlock( &rcv_window_mutex ) == -1 )        Error_("Error in function : pthread_mutex_unlock (uploader).", 1);
+            if ( pthread_mutex_unlock( &rcv_window_mutex ) == -1 )        
+                                                        Error_("Error in function : pthread_mutex_unlock (uploader).", 1);
 
 
             /* END OF CRITICAL SECTION FOR RECEIVING WINDOW'S ACCESS. */
@@ -198,7 +208,9 @@ void    * uploader( void * upload_block ) {
 
     } while( counter < filesize );
 
+    printf("\033[01;34m");
     printf("\n UPLOAD COMPLETE.");                                          fflush(stdout);
+    printf("\033[0m");
 
     block -> uploading = '0';
 
@@ -309,9 +321,11 @@ void    * writer( void * upload_block ) {
                 /* Write the packet within the new file in client's directory. */
                 ret = write( file_descriptor, ( curr_first -> packet ), strlen( curr_first -> packet  ) );
                 if ( ret == -1)         Error_( "Error in function : write (thread writer).", 1);
-
-                printf( "\n Packet %d content has been written on file %s. %d bytes written .", 
-                                            ( curr_first -> sequence_number ), ( block -> filepath ), ret );             fflush(stdout);
+                
+                printf("\033[01;34m");
+                printf( "\n PACKET %d CONTENT WRITTEN ON FILE : %s. %d BYTES WRITTEN.", 
+                                            ( curr_first -> sequence_number ), ( block -> filepath ), ret );           fflush(stdout);
+                printf("\033[0m");
 
 
                 /* Slide the receiving window on. */

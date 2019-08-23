@@ -104,6 +104,8 @@ void * block_volture( void * _block );
 */
 int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *client_address , int len ) { 
 
+    printf("\033[1;35m");
+
     printf("\n :: ALLOCATE NEW BLOCK FUNCTION :: ");
 
     int         ret,                fd,                 filesize;    
@@ -208,6 +210,8 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
 
     printf("\n WORKER STRUCTURES INITIATED.");                                                 fflush(stdout);
 
+    printf("\033[0m"); 
+
 
     /*  Generate the thread-pool and activate the new thread to serve the request.  */
 
@@ -274,7 +278,9 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
 */
 int start_download( char *pathname , struct sockaddr_in *client_address, int len ) {
 
-    int                 ret;                        block                   *tmp_block = download_environment;        
+    int                 ret;                        block                   *tmp_block = download_environment;   
+
+    printf("\033[1;35m");     
 
     /*  Verify if this is the first time the Download Environment is being SETUP.
         If it is, it is necessary to initialize a new Download Environment's block for file's download.  */
@@ -289,6 +295,8 @@ int start_download( char *pathname , struct sockaddr_in *client_address, int len
             printf("Error in function: init_new_block (start_download).");
             return -1;
         }
+
+        printf("\033[0m"); 
 
         return 0;
     }
@@ -328,6 +336,8 @@ int start_download( char *pathname , struct sockaddr_in *client_address, int len
                         return -1;
                     }
 
+                    printf("\033[0m"); 
+
                     return 0;
 
                 }
@@ -358,6 +368,8 @@ int start_download( char *pathname , struct sockaddr_in *client_address, int len
         printf("Error in function: init_new_block (start_download).");
         return -1;
     }
+
+    printf("\033[0m"); 
 
     return 0;
 
@@ -473,7 +485,8 @@ void * acknowledgment_keeper( void * _block ) {
             pthread_exit( NULL );
         }
 
-        printf("\n ACK received : ");
+        printf("\033[01;34m");
+        printf("\n ACK RECEIVED  :  ");
 
         /*  Parse the packet to keep separated the identifier and sequence number fields.  */
 
@@ -518,6 +531,8 @@ void * acknowledgment_keeper( void * _block ) {
             sw_tmp -> status = ACKED;
 
             printf(" %d", sw_tmp -> sequence_number );                  fflush(stdout);
+
+            printf("\033[0m"); 
 
             if ( ( sw_tmp -> is_first ) == '1' )    {
                 pthread_kill( ( w_tmp -> tid ), SIGUSR2 ); 
@@ -695,9 +710,12 @@ void * block_volture( void * _block ) {
         if( flag == '0') {
 
             /* There are no workers currently running. The countdown begins. */
+            printf("\033[01;31m");
 
             printf("\n THIS BLOCK WILL BE ERASED IN %d SECONDS ...", ( myblock -> BLTC ) ); 
             fflush(stdout);
+
+            printf("\033[0m");  
 
             myblock -> quit = '1';
 
@@ -728,8 +746,10 @@ void * block_volture( void * _block ) {
     (specified in block_to_free).
 */
 int   block_eraser( block * block_to_free ) {
-
+    
     int ret;
+
+    printf("\033[01;31m");
 
     if ( block_to_free == download_environment ) {
 
@@ -794,6 +814,8 @@ int   block_eraser( block * block_to_free ) {
     free( block_to_free );
 
     printf("\n THE BLOCK HAS BEEN DESTROYED.");                                     fflush(stdout);
+
+    printf("\033[0m");  
 
     return 0;
 
