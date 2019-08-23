@@ -5,6 +5,7 @@
 #include "Upload_Environment.c"
 #include "Reliable_Data_Transfer.c"
 
+
 #define PORT     5193
 
 
@@ -16,8 +17,7 @@
 
 
 
-int                     sockfd; 
-struct sockaddr_in      servaddr;
+int                     sockfd;                     struct sockaddr_in      servaddr;
 
 
 
@@ -37,14 +37,15 @@ struct client_ {
 
     struct client_              *next;
 
-};                                                              struct client_      *clients;
+};                                                                  struct client_      *clients;
 
 
 
 
 
 /* This is a buffer cache containing all file names stored in RUFT Server's directory. */
-char *                   list;
+
+char                            *list;
 
 
 
@@ -57,7 +58,6 @@ int     download_request_handler( struct client_ * client_infos );
 int     upload_request_handler( struct client_ * client_infos );
 
 
-
 /* AUXILIAR FUNCTIONS DECLARATION */
 
 int     current_dir_size();
@@ -66,19 +66,16 @@ char    *load_dir( int size );
 
 int     initialize_upload_environment();
 
+
 /* RECEPTIONIST THREAD FUNCTION DECLARATION */
 
-void    *receptionist( void * client_info );
+void    * receptionist( void * client_info );
 
 
 
 
 
-  
-
-
-
-int main(int argc, char ** argv) { 
+int     main( int argc, char ** argv ) { 
 
     int ret;
 
@@ -120,7 +117,6 @@ int main(int argc, char ** argv) {
         return -1;
     }
 
-
     /* Initialization of Download Environment, by validating memory area for its first block and for the block's first worker. */            
     download_environment = malloc( sizeof( block ) );
     if ( download_environment            == NULL )       Error_("Error in function : malloc (main.)", 1);
@@ -132,36 +128,36 @@ int main(int argc, char ** argv) {
     
     struct client_      *tmp = clients;
 
-
-
     do{
-        /* Within this cycle, RUFT Server receives all types of requests from clients, and creates matched-threads to serve each one of them. */
+        /*  Within this cycle, RUFT Server receives all types of requests from clients, 
+            and creates matched-threads to serve each one of them. */
 
         tmp -> len = sizeof( tmp -> client_address );
 
         printf("\n Waiting for request messages...\n\n");                                 fflush(stdout);
 
-        /* Receive a msg. Client Address is not specified, it is set at message arrival through transport layer UDP infos. */ 
+        /*  Receive a msg. Client Address is not specified, it is set at message arrival through transport layer UDP infos. */ 
 
-        ret = recvfrom( sockfd, (char *) ( tmp -> incoming_request ), MAXLINE, MSG_WAITALL, ( struct sockaddr *) &( tmp -> client_address ), &( tmp -> len ) ); 
+        ret = recvfrom( sockfd, (char *) ( tmp -> incoming_request ), MAXLINE, MSG_WAITALL, 
+                            ( struct sockaddr *) &( tmp -> client_address ), &( tmp -> len ) ); 
         if ( ret == -1 ) {
             printf("Error in function : recvfrom() (main). errno = %d", errno );
             return -1;
         }
 
-        /* Create receptionist thread which starts the serving-job */
-        if ( pthread_create( &( tmp -> receptionist), NULL, receptionist, (void *) tmp ) == -1 )       Error_("Error in function : pthread_create (main).", 1);
+        /*  Create receptionist thread which starts the serving-job */
+        if ( pthread_create( &( tmp -> receptionist), NULL, receptionist, (void *) tmp ) == -1 )       
+                                                 Error_("Error in function : pthread_create (main).", 1);
         
         tmp -> next = malloc( sizeof( struct client_ ) );
-        if ( tmp -> next == NULL)       Error_("Error in function : malloc (main).", 1);
+        if ( tmp -> next == NULL)                Error_("Error in function : malloc (main).", 1);
 
         tmp = ( tmp -> next );
 
     } while (1);
 
-     
-      
     return 0; 
+
 } 
 
 
@@ -171,7 +167,7 @@ int main(int argc, char ** argv) {
 
 /* AUXILIAR FUNCTIONS IMPLEMENTATION */
 
-int current_dir_size(){
+int     current_dir_size() {
 
     int     size = 1;
 
@@ -195,7 +191,7 @@ int current_dir_size(){
     return size;
 }
 
-char* load_dir( int size ) {
+char    * load_dir( int size ) {
 
 
     DIR     *d;
@@ -233,7 +229,7 @@ char* load_dir( int size ) {
 
 /* REQUEST HANDLERS IMPLEMENTATION */
 
-int list_request_handler( struct client_ * client_infos ){
+int     list_request_handler( struct client_ * client_infos ) {
 
     int ret;   
 
@@ -260,7 +256,7 @@ int list_request_handler( struct client_ * client_infos ){
     This function takes as unique parameter a struct client_ in which all client's infos are stored at runtime, at the moment of request's reception.
     This function reads the request and acts different actions depending on request's type.
 */
-void * receptionist( void * client_infos ) {
+void    * receptionist( void * client_infos ) {
 
     int ret;
 
@@ -279,12 +275,14 @@ void * receptionist( void * client_infos ) {
 
         case LIST:     /* LIST request          */     
  
-            dir_size = current_dir_size();                              // update the list before forwanding it.
+            /*  Update the list before forwanding it. */
+            dir_size = current_dir_size();                             
             list = load_dir( dir_size );           
 
             sprintf( ( my_client -> buffer ), "%ld", strlen(list) );
 
-            if ( list_request_handler( my_client ) != 0 )                Error_("Error in function : list_request_handler (receptionist).", 1);
+            if ( list_request_handler( my_client ) != 0 )                
+                                                        Error_("Error in function : list_request_handler (receptionist).", 1);
 
             break;
 
@@ -297,7 +295,7 @@ void * receptionist( void * client_infos ) {
             my_client -> pathname = strtok( tmp, "-" );
 
             if ( start_download( ( my_client -> pathname ), &( my_client -> client_address ), my_client -> len ) == -1 )     
-                                                                Error_("Error in function : start download (receptionist).", 1);
+                                                              Error_("Error in function : start download (receptionist).", 1);
 
             break;
 
