@@ -86,7 +86,7 @@ int main(int argc, char ** argv) {
     printf( "\n RUFT SERVER TURNED ON.\n Loading directory file list on buffer cache..." );
     int dir_size = current_dir_size();
     list = load_dir( dir_size );
-    printf("done.\n Current directory content is :\n\n%s\n", list );        fflush(stdout);
+    printf("Done.\n Current directory content is :\n\n%s\n", list );        fflush(stdout);
       
 
     /* Creating socket file descriptor */ 
@@ -139,7 +139,7 @@ int main(int argc, char ** argv) {
 
         tmp -> len = sizeof( tmp -> client_address );
 
-        printf("waiting for request messages...\n\n");
+        printf("\n Waiting for request messages...\n\n");                                 fflush(stdout);
 
         /* Receive a msg. Client Address is not specified, it is set at message arrival through transport layer UDP infos. */ 
 

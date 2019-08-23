@@ -11,9 +11,10 @@ struct block_;
 
 
 /*  
-    This structure represents an istance of working thread related to a specific block of the RUFT Server's Download Environment. 
-    Each of the block's workers serves download requests through the same block's socket, but for a different client. 
-    As a worker thread serves a request, it goes on pause, waiting for a signal (SIGUSR1) to be awaked. 
+    This structure represents an istance of working thread related to a specific block of the RUFT Server's Download 
+    Environment. Each of the block's workers serves download requests through the same block's socket, but for a 
+    different client. As a worker thread serves a request, it goes on pause, waiting for a signal (SIGUSR1) to be 
+    awaked. 
 */
 typedef struct worker_{
 
@@ -46,10 +47,11 @@ typedef struct worker_{
 
 /*  
     This structure represents the first sub-division of the RUFT Server's Download Environment.
-    The Download Environment itself is an array of block structs. Each block is related to a specific file on Server's persistance. 
-    As a new block is allocated, a new socket is created, together with a pool of threads working exclusively for that block (workers).
-    Each block refers to a file stream (buffer cache) to make workers trasmit packets fast.
-    Each block has a life timer countdown, that starts running as all workers are on pause. if timer runs out, the block instance is deallocated.
+    The Download Environment itself is an array of block structs. Each block is related to a specific file on Server's 
+    persistance. As a new block is allocated, a new socket is created, together with a pool of threads working exclusively 
+    for that block (workers). Each block refers to a file stream (buffer cache) to make workers trasmit packets fast.
+    Each block has a life timer countdown, that starts running as all workers are on pause. if timer runs out, the block 
+    instance is deallocated.
 */
 typedef struct block_ {
 
@@ -102,13 +104,13 @@ void * block_volture( void * _block );
 */
 int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *client_address , int len ) { 
 
-    printf(" :: ALLOCATE NEW BLOCK FUNCTION :: \n");
+    printf("\n :: ALLOCATE NEW BLOCK FUNCTION :: ");
 
-    int     ret,    fd,     filesize;    
+    int         ret,                fd,                 filesize;    
 
-    if ( new_block == download_environment ) goto next;
+    if ( new_block == download_environment )           goto next;
 
-    /* Validate memory area to contain a new block structure. */
+    /* Validate memory area to contain a new block structure.  */
     new_block = malloc( sizeof( block ) );
     if ( new_block == NULL ) {
         printf(" \n Error in function : malloc");
@@ -118,9 +120,7 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
     next:
 
     /* Open a new session on file pathname, and load the file in main memory to be used by this new block. */
-
     fd = open( pathname, O_RDONLY );
-
     if ( fd == -1 ) {
         printf(" \n Error in function : open (init_new block) errno = %d.", errno );
         return -1;
@@ -128,17 +128,19 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
 
     filesize = lseek( fd, 0, SEEK_END );
 
-    new_block -> buffer_cache = (char *) mmap( NULL , filesize, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0 );
+    /* Validate memory space for the buffer cache to load file content. */
+    new_block -> buffer_cache = ( char *) mmap( NULL , filesize, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0 );
     if ( new_block -> buffer_cache == NULL ) {
-        printf(" \n Error in function : mmap (init_new block).");
+        printf(" \n Error in function : mmap (init_new block). errno = %d", errno );
         return -1;
     }
 
-    printf("\n Opened session on file %s.\n File charged on block's cache.\n", pathname); fflush(stdout);
+    printf("\n FILE LOADED ON BLOCK'S BUFFER CACHE" );                                         fflush(stdout);
 
-    /*  Populate the block structure attributes. */
+    /*  Setting up the block-structure's attributes. */
 
     new_block -> eraser = '0';
+
     new_block -> quit = '0';
 
     new_block -> filename = malloc( sizeof(char) * ( strlen( pathname ) + 2 ) );
@@ -147,27 +149,27 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
         return -1;
     }
     
-    ret = sprintf( (char *) ( new_block -> filename ), "%s", pathname );                                //match a file path.
+    ret = sprintf( (char *) ( new_block -> filename ), "%s", pathname );                 
     if (ret == -1) {
         printf("\n Error in function : sprintf.");
         return -1;
     }
 
-    printf("\n Block's fields population.\n Filename : %s.\n ", new_block -> filename ); fflush(stdout);
+    /* Set the BLTC default value proportional to the file size. */
+    new_block -> BLTC = (int) ( strlen( new_block -> buffer_cache ) / PACKET_SIZE  ) ;      
 
-    new_block -> BLTC = (int) ( strlen( new_block -> buffer_cache ) / PACKET_SIZE  ) ;      //set the BLTC default value proportional to the file size.
+    printf("\n CURRENT BLTC (Block Life Time Countdown) : %d.", ( new_block -> BLTC ) );        fflush(stdout);
 
-    printf("\n BLTC init value : %d.\n ", new_block -> BLTC ); fflush(stdout);
-
-    
-    if ( ( ( new_block -> server_sock_desc ) = socket( AF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {                //creating block's socket file descriptor 
-        perror("\n socket creation failed (init new block)."); 
+    /* Creating a new socket for the Block. */
+    if ( ( ( new_block -> server_sock_desc ) = socket( AF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {                 
+        perror("\n Socket creation failed (init new block)." ); 
         return -1; 
     }   
 
-    printf("\n Socket N° : %d.\n ", new_block -> server_sock_desc ); fflush(stdout);
+    printf("\n SOCKET DESCRIPTOR : %d.\n ", ( new_block -> server_sock_desc ) );                fflush(stdout);
 
-    new_block -> workers = malloc( sizeof( worker ) );                                                   //validate memory area for block's workers.
+    /* Validate memory area for block's workers. */
+    new_block -> workers = malloc( sizeof( worker ) );                                                   
     if ( new_block -> workers == NULL ) {
         printf("Error in function : malloc.");
         return -1;
@@ -175,9 +177,9 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
 
     worker *tmp = new_block -> workers;                                                     
 
-    for ( int i = 0; i < MAX_WORKERS; i ++ ) {                                                            //validate memory area for all workers.
+    for ( int i = 0; i < MAX_WORKERS; i ++ ) {                                                            
 
-        //populate worker's attributes.
+        /* Populate worker's attributes.  */
 
         pthread_mutex_init( &(tmp -> s_window_mutex), NULL );
 
@@ -197,12 +199,14 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
             return -1;
         }
 
+        /* This makes a circular linked list of workers.  */
+
         if ( i != MAX_WORKERS -1)   tmp = ( tmp -> next );
-        else                        tmp -> next = ( new_block -> workers );                 //this makes a circular linked list of workers.
+        else                        tmp -> next = ( new_block -> workers );                 
         
     }
 
-    printf("\n Initialized workers' structures.\n Set up the first worker to download file. "); fflush(stdout);
+    printf("\n WORKER STRUCTURES INITIATED.");                                                 fflush(stdout);
 
 
     /*  Generate the thread-pool and activate the new thread to serve the request.  */
@@ -231,7 +235,7 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
     }
 
 
-    /*  Create and launch all concurrent threads of the pool. */
+    /*  Create and launch all concurrent Worker Threads of the pool, coupled with Time Wizards. */
 
     for ( int i = 0; i < MAX_WORKERS; i ++ ) {
 
@@ -250,7 +254,6 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
         tmp = ( tmp -> next );
     }
 
-
     return 0;
 
 }
@@ -266,22 +269,19 @@ int init_new_block ( block *new_block, char * pathname , struct sockaddr_in *cli
     By this function, server reception delegates download environment sending to client_address the file specified in pathname.
     Download Environment's blocks are checked to find the one matched to that file, if already exists: 
     in that case, a paused thread of the block is awaken by SIGUSR1 event ( function pthread_kill ).
-    If a block matched to pathname doesn't exists yet in Download Environment, this function calls "init_new_block" to allocate a new one.
-    Returns : 0 on success, -1 on error.
+    If a block matched to pathname doesn't exists yet in Download Environment, this function calls "init_new_block" to allocate 
+    a new one. Returns : 0 on success, -1 on error.
 */
 int start_download( char *pathname , struct sockaddr_in *client_address, int len ) {
 
-    int                 ret;
+    int                 ret;                        block                   *tmp_block = download_environment;        
 
-    block               *tmp_block = download_environment;        
+    /*  Verify if this is the first time the Download Environment is being SETUP.
+        If it is, it is necessary to initialize a new Download Environment's block for file's download.  */
 
+    if ( ( tmp_block -> filename ) == NULL ) {
 
-    /*  Verify if this is the first time the download environment is being set up.
-        If it is, it is necessary to initialize a new download environment's block for file's download. */
-
-    if ( tmp_block -> filename == NULL ) {
-
-        printf( "\n\n Allocating a new block for file %s in Server's Download Environment (this is the first block).", pathname ); 
+        printf( "\n\n ALLOCATING A NEW BLOCK FOR FILE : %s ", pathname );                     
         fflush( stdout); 
 
         ret = init_new_block( tmp_block , pathname, client_address, len );
@@ -293,6 +293,9 @@ int start_download( char *pathname , struct sockaddr_in *client_address, int len
         return 0;
     }
 
+    /*  If Download Environment contains one ore more blocks, it is necessary to look for a block referencing 
+        the same file pathname. If it does not exists, a new block has to be allocated at the end of Download
+        Environment. */
 
     block               *last_block = NULL;
 
@@ -300,9 +303,8 @@ int start_download( char *pathname , struct sockaddr_in *client_address, int len
 
         if ( strcmp( pathname, ( tmp_block -> filename ) ) == 0 ) {
 
-            /* if the requested file to download is already present in one of the existing blocks
-               of download environment, then the first paused worker of that block is chosen to
-               serve this request. */
+            /*  If the requested file to download is already present in one of the existing blocks of Download 
+                Environment, then the first paused Worker of that Block is chosen to serve this request.    */
 
             worker *tmp_worker = ( tmp_block -> workers );
 
@@ -310,11 +312,11 @@ int start_download( char *pathname , struct sockaddr_in *client_address, int len
 
                 if ( tmp_worker -> is_working == '0' ){
 
-                    //awake the sleeping thread and request the service.
+                    /*  Wake up the sleeping thread and request the service.  */
 
                     tmp_worker -> client_addr = client_address;
 
-                    printf("\n Waking up Worker %d", tmp_worker -> identifier );        fflush(stdout);
+                    printf("\n WAKE UP WORKER %d", tmp_worker -> identifier );                 fflush(stdout);
 
                     free( tmp_worker -> sliding_window_slot_);
 
@@ -322,7 +324,7 @@ int start_download( char *pathname , struct sockaddr_in *client_address, int len
 
                     ret = pthread_kill( ( tmp_worker -> tid ) , SIGUSR1 );
                     if (ret != 0) {
-                        printf("Error in function: pthread_kill (start_download).");
+                        printf("\n Error in function: pthread_kill (start_download).");
                         return -1;
                     }
 
@@ -332,7 +334,7 @@ int start_download( char *pathname , struct sockaddr_in *client_address, int len
 
             } while ( ( tmp_worker = ( tmp_worker -> next ) ) != NULL);
 
-            printf("\nOps! all block's threads are already in use. Not able to serve a request in an existing block... ");
+            printf("\n  ALL BLOCKS ARE CURRENTLY TAKEN.");                                     fflush(stdout);
 
         }
 
@@ -348,7 +350,7 @@ int start_download( char *pathname , struct sockaddr_in *client_address, int len
         A new block related to the requested file is going to be allocated, so that this request can be
         handled. */
 
-    printf( "\n\n Allocating a new block for file %s in Server's Download Environment...", pathname ); 
+    printf( "\n ALLOCATING A NEW BLOCK FOR FILE : %s", pathname ); 
     fflush( stdout );
 
     ret = init_new_block( last_block -> next, pathname, client_address , len );
@@ -369,8 +371,8 @@ int start_download( char *pathname , struct sockaddr_in *client_address, int len
 
 /*  
     This is block's worker-threads' function. 
-    This function splits each thread's life into two main parts, one of pause (sleeping), the other concerning transmissions of requested files. 
-    As a thread is awaken, it starts forwarding packets till the whole file is transferred.
+    This function splits each thread's life into two main parts, one of pause (sleeping), the other concerning transmissions 
+    of requested files. As a thread is awaken, it starts forwarding packets till the whole file is transferred.
     Once a thread ends its job, it alerts the parent-block  and increment block's accesses value, then go back to pause.
 */
 void * work ( void * _worker ) {
@@ -434,17 +436,16 @@ void * work ( void * _worker ) {
     This is the block's acknowledgment keeper (and demultiplexer) thread function.
     By this function, this thread receives block's client's acknowledgments and executes demultiplexing of them: 
     each ACK is directed to a specific block's worker, and further to a specific slot of its sliding window.
-    This thread is responsible for notifying workers about the received ACKs and for awakening a worker waiting for sliding his window on.
+    This thread is responsible for notifying workers about the received ACKs and for awakening a worker waiting for 
+    sliding his window on.
 */
 void * acknowledgment_keeper( void * _block ) {
 
     signal( SIGUSR1, wake_up );
 
-
     int     ret,            len = sizeof( struct sockaddr_in );
 
     char    *id,            *seq_num;
-
 
     char    *buffer = malloc( sizeof( char ) * MAXLINE );
 
@@ -454,7 +455,8 @@ void * acknowledgment_keeper( void * _block ) {
 
     sw_slot *sw_tmp;
 
-    printf("\n ACKNOWLEDGMENT KEEPER RUNNING FOR BLOCK MATCHED TO FILE : %s\n ", myblock -> filename ); fflush(stdout);
+    printf("\n ACKNOWLEDGMENT KEEPER RUNNING FOR BLOCK MATCHED TO FILE : %s\n ", ( myblock -> filename ) ); 
+    fflush(stdout);
 
     do {
 
@@ -464,7 +466,8 @@ void * acknowledgment_keeper( void * _block ) {
 
         memset( buffer, 0, sizeof( buffer ) );
 
-        ret = recvfrom( myblock -> server_sock_desc, (char *) buffer, MAXLINE , MSG_WAITALL, ( struct sockaddr *) &client_address, &len); 
+        ret = recvfrom( ( myblock -> server_sock_desc ), (char *) buffer, MAXLINE , MSG_WAITALL, 
+                        ( struct sockaddr *) &client_address, &len); 
         if (ret <= 0) {
             printf("\n ACK KEEPER EXITS...");
             pthread_exit( NULL );
@@ -500,13 +503,13 @@ void * acknowledgment_keeper( void * _block ) {
 
         }
 
-
         {
             pthread_mutex_lock( &( w_tmp -> s_window_mutex) );
 
-            /*  THIS IS A CRITICAL SECTION FOR ACCESS ON THE SLIDING WINDOW (shared by ack-keeper thread and the relative worker).
-                Update worker window's slot's status from SENT to ACKED. 
-                If the slot is the first of the sliding window, forward a SIGUSR2 signal to worker-thread to get the window sliding on. */
+            /*  THIS IS A CRITICAL SECTION FOR ACCESS ON THE SLIDING WINDOW (shared by ack-keeper thread and the 
+                relative worker). Update worker window's slot's status from SENT to ACKED. If the slot is the 
+                first of the sliding window, forward a SIGUSR2 signal to worker-thread to get the window sliding 
+                on. */
 
             if ( ( sw_tmp -> status ) != SENT )  {
                 printf("\n Error in acknowledgemnt keeper : unexpected window status = %d", sw_tmp ->status);
@@ -515,8 +518,6 @@ void * acknowledgment_keeper( void * _block ) {
             sw_tmp -> status = ACKED;
 
             printf(" %d", sw_tmp -> sequence_number );                  fflush(stdout);
-
-            //current_timestamp( sw_tmp -> acked_timestamp );
 
             if ( ( sw_tmp -> is_first ) == '1' )    {
                 pthread_kill( ( w_tmp -> tid ), SIGUSR2 ); 
@@ -540,10 +541,10 @@ void * acknowledgment_keeper( void * _block ) {
 /*
     This is the thread function of the time_wizard related to a worker.
     This function implements the retransmission of packets lost within the network, during a worker's file transfer to a client.
-    In this function, the thread executes a while(1) loop : for a time equal to the nanoseconds specified in global extern variable "beat", this thread sleeps.
-    Every time the thread awakes, it accesses to the worker's sliding window and check the timeout interval on beeing run out :
-    If this condition is verified, then the thread executes a retransmission of the specific window slot's packet to the client.
-    The sliding window is of course accessed on all of its slots.
+    In this function, the thread executes a while(1) loop : for a time equal to the nanoseconds specified in global extern 
+    variable "beat", this thread sleeps. Every time the thread awakes, it accesses to the worker's sliding window and check 
+    the timeout interval on beeing run out : If this condition is verified, then the thread executes a retransmission of the 
+    specific window slot's packet to the client. The sliding window is of course accessed on all of its slots.
 */
 void * time_wizard( void * _worker ) {
 
@@ -655,15 +656,9 @@ void * time_wizard( void * _worker ) {
 */
 void * block_volture( void * _block ) {
 
-    sigset_t set;
-    sigemptyset( &set );
-    sigaddset( &set, SIGALRM );
+    sigset_t set;   sigemptyset( &set );    sigaddset( &set, SIGALRM );
     
-    
-
-    int ret;
-
-    block * myblock = ( block * ) _block;
+    int ret;        block * myblock = ( block * ) _block;
 
     redo:
 
@@ -698,9 +693,11 @@ void * block_volture( void * _block ) {
         }
 
         if( flag == '0') {
+
             /* There are no workers currently running. The countdown begins. */
 
-            printf("\n This is currently the last worker standing.\n This Block will be erased in BLTC seconds..."); fflush(stdout);
+            printf("\n THIS BLOCK WILL BE ERASED IN %d SECONDS ...", ( myblock -> BLTC ) ); 
+            fflush(stdout);
 
             myblock -> quit = '1';
 
@@ -727,7 +724,8 @@ void * block_volture( void * _block ) {
 
 
 /*
-    This is the function called by the block_volture to free the memory space occupied by a block (specified in block_to_free).
+    This is the function called by the block_volture to free the memory space occupied by a block 
+    (specified in block_to_free).
 */
 int   block_eraser( block * block_to_free ) {
 
