@@ -316,6 +316,10 @@ int start_download( char *pathname , struct sockaddr_in *client_address, int len
 
                     printf("\n Waking up Worker %d", tmp_worker -> identifier );        fflush(stdout);
 
+                    free( tmp_worker -> sliding_window_slot_);
+
+                    tmp_worker -> sliding_window_slot_ = get_sliding_window();
+
                     ret = pthread_kill( ( tmp_worker -> tid ) , SIGUSR1 );
                     if (ret != 0) {
                         printf("Error in function: pthread_kill (start_download).");
@@ -390,10 +394,6 @@ void * work ( void * _worker ) {
     printf("\n WORKER %d RUNNING FOR DOWNLOAD.\n ", ( me -> identifier ) );         fflush(stdout);
 
     myblock -> BLTC ++;
-
-    free( me -> sliding_window_slot_ );
-
-    me -> sliding_window_slot_ = get_sliding_window();
 
     ret = reliable_file_forward( ( me -> identifier ), ( me -> sockfd ), ( me -> client_addr ), ( me -> len ), 
                                     ( myblock -> buffer_cache ), ( me -> sliding_window_slot_ ), &( me -> s_window_mutex ) );
@@ -609,9 +609,9 @@ void * time_wizard( void * _worker ) {
     }
 
     do {
-
-        printf(" . .");                                                                          fflush(stdout);
-
+        
+        printf(". . ");                                                   fflush(stdout);
+        
         ret = nanosleep( &beat, NULL );
         if (ret == -1)      Error_( "Error in function : nanosleep() (time_wizard).", 1);
 

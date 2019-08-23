@@ -5,7 +5,7 @@
 
 /* RDT CONFIGURABLE PARAMETERS */
 
-#define LOSS_PROBABILITY    0
+#define LOSS_PROBABILITY    15
 
 #define WINDOW_SIZE         7
 
@@ -283,7 +283,7 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
 
             tmp -> timeout_interval = TIMEOUT_INTERVAL;                                           //set the timeout interval for retransmission.
             
-            current_timestamp( &(tmp -> sent_timestamp) );
+            current_timestamp( &( tmp -> sent_timestamp ) );                                      //set packet's sent-timestamp.
 
             ret = sendto( socket_descriptor, (const char *) packet, MAXLINE, MSG_CONFIRM, 
                             (const struct sockaddr *) client_address, len ); 
@@ -293,10 +293,7 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
             }
 
             printf("\n SENT PACKET %s with content size of %ld \n", packet_header, strlen(packet_content) );    fflush(stdout);
-            
-            
-
-            //current_timestamp( tmp -> sent_timestamp );                                         //set packet's sent-timestamp.
+        
 
             tmp -> bytes += strlen( packet_content );                                             //set slot's bytes value with the precise number of file bytes sent.
             
@@ -350,7 +347,8 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
 
         first_free = tmp;
 
-        while(tmp->status != ACKED && tmp->is_first != '1'){
+        while( tmp -> status != ACKED && tmp -> is_first != '1' ){
+
             tmp = tmp ->next;
         }
 
@@ -360,7 +358,8 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
 
             counter += ( tmp -> bytes );                                         //update counter value with acknowledged bytes of this slot.
 
-            printf("\n tmp->bytes=%d  counter=%d", tmp->bytes,counter);          fflush(stdout);
+            // printf("\n tmp->bytes=%d  counter=%d", tmp -> bytes, counter );          
+            // fflush(stdout);
 
             tmp -> bytes = 0;                                                    //reset slot's bytes to 0, to be reused by next packets.
 
@@ -370,16 +369,17 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
             /*  Slide the window on. */
 
             tmp -> sequence_number += WINDOW_SIZE;
+
             tmp = ( tmp -> next );
+
             tmp -> is_first = '1';
+
             window = tmp;    
                                                               
 
         }
 
         /*  Set tmp value to the first FREE slot to start over the cycle from the top.  */
-
-        tmp = first_free;
 
         printf("\n WINDOW SLIDED ON.");                                     fflush(stdout);
 
@@ -397,11 +397,7 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
 
     return counter;
 
-
 }
-
-
-int reliable_file_receive();
 
 
 

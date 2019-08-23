@@ -45,7 +45,7 @@ struct upload_block {
 
 void    * uploader( void * upload_block ) {
 
-    int                             ret,                              counter = 0;
+    int                             ret,              num,            counter = 0;
 
     struct upload_block             *block = (struct upload_block *) upload_block;
 
@@ -98,7 +98,9 @@ void    * uploader( void * upload_block ) {
 
     do{
 
-        printf("\n  UPLOAD IN PROGRESS... ");                                                         fflush(stdout);
+        printf("\n  UPLOAD IN PROGRESS... ");                                                           fflush(stdout);
+
+        loss:
 
         ret = recvfrom( block -> sockfd, (char *) rcv_buffer, MAXLINE,  MSG_WAITALL, 
                         (struct sockaddr *) &( block -> clientaddr ), &( block -> addr_len ) ); 
@@ -106,6 +108,9 @@ void    * uploader( void * upload_block ) {
 
         char    *idtf;                          idtf = strtok( rcv_buffer, "/");
         int     identifier = atoi( idtf );
+
+        num = ( rand() % 100 ) + 1; 
+        if( num <= LOSS_PROBABILITY ) goto loss;
 
         
         if ( identifier == ( block -> identifier ) ) {

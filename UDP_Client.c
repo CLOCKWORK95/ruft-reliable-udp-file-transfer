@@ -614,10 +614,6 @@ void    * work ( void * infos ) {
 
     printf("\n WORKER RUNNING FOR UPLOAD.\n " );         fflush(stdout);
 
-    free( info -> sliding_window_slot_ );
-
-    info -> sliding_window_slot_ = get_sliding_window();
-
     ret = reliable_file_forward( ( info -> identifier ), ( info -> sockfd ), ( info -> server_addr ), ( info -> len ), 
                                     ( info -> buffer_cache ), ( info -> sliding_window_slot_ ), &( info -> s_window_mutex ) );
     if (ret == -1) {
@@ -630,6 +626,8 @@ void    * work ( void * infos ) {
     info -> uploading = '0';
 
     pthread_cancel( info -> ack_keeper );
+
+    free( info -> sliding_window_slot_ );
 
     pthread_exit( NULL );
 
@@ -804,6 +802,8 @@ int     initialize_upload_instance( char* pathname, struct sockaddr_in *serv_add
     infos -> len = len;
 
     infos -> uploading = '1';
+
+    infos -> sliding_window_slot_ = get_sliding_window();
 
     fd = open( pathname, O_RDONLY);
     if (fd == -1) {
