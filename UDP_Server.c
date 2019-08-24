@@ -15,6 +15,8 @@
 
 #define PUT     2
 
+#define ERR     4
+
 
 
 int                     sockfd;                     struct sockaddr_in      servaddr;
@@ -233,8 +235,21 @@ char    * load_dir( int size ) {
   
 }
 
+int     check_existance( char* pathname ) {
 
+    if( access( pathname, F_OK ) != -1 ) {
 
+        // file aready exists.
+        return 1;
+
+    } else {
+
+        // file doesn't exist yet.
+        return 0;
+
+    }
+
+}
 
 
 
@@ -300,13 +315,19 @@ void    * receptionist( void * client_infos ) {
 
         case GET:     /* GET (DOWNLOAD) request */
             
-            tmp = ( my_client -> incoming_request ) + (strlen(tmp) + 1 );       
+            tmp = ( my_client -> incoming_request ) + ( strlen(tmp) + 1 );       
 
             printf(" pathname received is : %s\n\n", tmp ); fflush(stdout);
 
             my_client -> pathname = strtok( tmp, "-" );
 
-            if ( start_download( ( my_client -> pathname ), &( my_client -> client_address ), my_client -> len ) == -1 )     
+            /*  Check if requested file do actually exist in RUFT server's directory.
+                If the file doesn't exist, abort download operation and notify the client. */
+            if( check_existance( my_client -> pathname ) == 0 ) {
+
+            }
+
+            if ( start_download( ( my_client -> pathname ), &( my_client -> client_address ), ( my_client -> len ) ) == -1 )     
                                                               Error_("Error in function : start download (receptionist).", 1);
 
             break;
@@ -319,7 +340,24 @@ void    * receptionist( void * client_infos ) {
 
             my_client -> pathname = strtok( tmp, "-" );
 
-            if ( start_upload( ( my_client -> pathname ), &( my_client -> client_address ), my_client -> len ) == -1 )     
+            /*  Check if requested file do actually exist in RUFT server's directory.
+                If the file does exists, abort upload operation and notify the client. */
+            if( check_existance( my_client -> pathname ) == 1 ) {
+
+                char buffer[MAXLINE];
+
+                sprintf( buffer, "%d/", ERR );
+
+                ret = sendto( sockfd , (char *) buffer, MAXLINE, MSG_CONFIRM, 
+                                                (struct sockaddr *) &( my_client -> client_address ), ( my_client -> len ) ); 
+                if (ret <= 0) {
+                    printf("\n Error in function : sendto (receptionist). errno %d", errno );
+                }
+
+                break;
+            }
+
+            if ( start_upload( ( my_client -> pathname ), &( my_client -> client_address ), ( my_client -> len ) ) == -1 )     
                                                                 Error_("Error in function : start upload (receptionist).", 1);
 
             break;

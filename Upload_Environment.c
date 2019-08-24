@@ -451,7 +451,6 @@ int     start_upload( char * filepath, struct sockaddr_in *clientaddress, int le
 
     struct sembuf oper;     oper.sem_flg = 0;       oper.sem_op = 1;
 
-
     redo:                   tmp = upload_environment;
 
     while( ( tmp -> uploading ) != '0') {

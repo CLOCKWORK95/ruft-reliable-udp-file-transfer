@@ -146,7 +146,7 @@ int main(int argc, char** argv) {
         case GET:
 
             download_request();
-            printf("\n\n File is downlading on the background from RUFT Server.\n Press a button to proceed...");
+            printf("\n\n Press a button to proceed...");
 
             scanf("%c", &c);
             while( getchar() != '\n'){};
@@ -303,6 +303,13 @@ int upload_request() {
     strtok( buffer, "/");
 
     identifier = atoi( buffer );
+
+    /*  Check for ERROR signal: uploading file already exists in server's directory.   */
+    if( identifier == 4 ) {
+        printf("\n ERROR MESSAGE : Impossible upload, this file already exists in RUFT Server's Directory.");
+        fflush(stdout);
+        return 0;
+    }
 
     ret = initialize_upload_instance( filetoupload, &upload_serv_addr, upload_addr_len, identifier );
     if (ret == -1) {
