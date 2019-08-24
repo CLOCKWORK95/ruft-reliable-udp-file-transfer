@@ -77,6 +77,17 @@ void    * receptionist( void * client_info );
 
 int     main( int argc, char ** argv ) { 
 
+
+    /*  Set flag for the Timeout Interval chosen Type.  */
+    if( argc > 1 ) {
+
+        if ( strcmp( argv[1], "1") == 0 )   ADAPTIVE = '1';
+        
+        else                                ADAPTIVE = '0';
+
+    }   else                                ADAPTIVE = '0';
+
+
     int ret;
 
     /* Load the current directory list on RAM to be ready for using.  */

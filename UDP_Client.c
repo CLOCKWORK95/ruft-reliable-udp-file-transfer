@@ -96,6 +96,15 @@ void display() {
 
 int main(int argc, char** argv) { 
 
+    /*  Set flag for the Timeout Interval chosen Type.  */
+    if( argc > 1 ) {
+
+        if ( strcmp( argv[1], "1") == 0 )   ADAPTIVE = '1';
+        
+        else                                ADAPTIVE = '0';
+
+    }   else                                ADAPTIVE = '0';
+
     int ret;      char c;
       
     // Creating socket file descriptor 
@@ -699,6 +708,15 @@ void    * acknowledgment_keeper( void * infos ) {
             }
 
             sw_tmp -> status = ACKED;
+
+            current_timestamp( &( sw_tmp -> acked_timestamp ) );
+
+            if( ( ( sw_tmp -> retransmission ) == '0' )  &&  ( ADAPTIVE == '1' ) ){
+                ret = update_adaptive_timeout_interval( sw_tmp );
+                if (ret != 0){
+                    printf("\n Error in function : update:adaptive_timeout_interval (ack_keeper).");
+                }
+            }
 
             printf(" %d", sw_tmp -> sequence_number );                  fflush(stdout);
 

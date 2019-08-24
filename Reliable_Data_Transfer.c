@@ -5,7 +5,7 @@
 
 /* RDT CONFIGURABLE PARAMETERS          */
 
-#define LOSS_PROBABILITY    15
+#define LOSS_PROBABILITY    50
 
 #define WINDOW_SIZE         11
 
@@ -40,7 +40,9 @@ typedef struct sliding_window_slot_ {
 
     int                     bytes;                                    // Actual number of packet's bytes
 
-    char                    is_first;                                 // '0' : not first    |    '1' : first.    
+    char                    is_first;                                 // '0' : not first    |    '1' : first.  
+
+    char                    retransmission;                           // Flag representing a retransmitted packet or not.  
 
     int                     status;                                   // FREE - SENT - ACKED.
 
@@ -293,6 +295,8 @@ int reliable_file_forward( int identifier, int    socket_descriptor, struct sock
 
             sprintf( ( tmp -> packet ), "%s", packet );
 
+            tmp -> retransmission = '0';
+
             /*  Set the Timeout Interval for retransmission. */
             tmp -> timeout_interval = TIMEOUT_INTERVAL;                                           
             
@@ -430,6 +434,10 @@ int retransmission( sw_slot *window, int socket_descriptor, struct sockaddr_in  
 
     int ret;
 
+    window -> retransmission = '1';
+
+    if( ADAPTIVE == '1')                TIMEOUT_INTERVAL = 2 * TIMEOUT_INTERVAL;
+
     ret = sendto( socket_descriptor, ( const char *) window -> packet , MAXLINE, 
                   MSG_CONFIRM, (const struct sockaddr *) clientaddress, len ); 
     if (ret == -1) {
@@ -449,5 +457,26 @@ int retransmission( sw_slot *window, int socket_descriptor, struct sockaddr_in  
     current_timestamp( &( window -> sent_timestamp ) );                            // Set packet's sent-timestamp.
 
     return 0; 
+
+}
+
+
+
+
+
+
+int update_adaptive_timeout_interval( sw_slot *packet ) {
+
+    long sampleRTT = nanodifftime( &( packet -> acked_timestamp ), &( packet -> sent_timestamp ) );
+
+    if( EstimatedRTT == 0)              EstimatedRTT = sampleRTT;
+
+    EstimatedRTT = ( 0.875  * EstimatedRTT ) + ( 0.125 * sampleRTT );
+
+    DevRTT = ( 0.75 * DevRTT ) + ( 0.25 * ( sampleRTT - EstimatedRTT ) );
+
+    TIMEOUT_INTERVAL = EstimatedRTT + ( 4 * DevRTT );
+
+    return 0;
 
 }
