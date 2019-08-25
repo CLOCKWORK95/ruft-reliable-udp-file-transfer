@@ -10,6 +10,12 @@
 
 #define PUT     2
 
+/*  Define PERFORMANCE TEST variables : START timestamp & END timestamp, TIME. */
+struct timespec start = { 0, 0 };
+
+struct timespec end = { 0, 0 };
+
+
 
 int                     sockfd; 
 char                    buffer[MAXLINE],        msg[MAXLINE]; 
@@ -120,10 +126,9 @@ int main(int argc, char** argv) {
     servaddr.sin_port =             htons(PORT); 
     servaddr.sin_addr.s_addr =      inet_addr("127.0.0.1"); 
       
-    int n, len, op; 
+    int n, len, op;
 
-
- ops:
+    ops:
 
     display();
 
@@ -154,6 +159,8 @@ int main(int argc, char** argv) {
             break;
 
         case PUT:
+
+            current_timestamp( &start );
 
             upload_request();
             printf("\n\n Press a button to proceed...");
@@ -245,6 +252,7 @@ int download_request() {
 
     sprintf( ( infos -> pathname ), "./client_directory/%s", filename );
 
+    current_timestamp( &start );
 
     // Sending get-request specifing the name of the file to download.
     ret = sendto( sockfd, (const char *) request, MAXLINE, MSG_CONFIRM, (const struct sockaddr *) &(servaddr),  sizeof(servaddr) ); 
@@ -283,6 +291,7 @@ int upload_request() {
 
     sprintf( filetoupload, "./client_directory/%s", filename );
 
+    current_timestamp( &start );
 
     // Sending put-request specifing the name of the file to upload.
     ret = sendto( sockfd, (const char *) request, MAXLINE, MSG_CONFIRM, (const struct sockaddr *) &(servaddr),  sizeof(servaddr) ); 
@@ -330,7 +339,7 @@ int upload_request() {
 /*  CLIENT SIDE implementation of RUFT "DOWNLOAD ENVIRONMENT"  */
 
 
-void * downloader( void * infos_ ){
+void * downloader( void * infos_ ) {
 
     int                             ret,            counter = 0,               num;
 
@@ -472,7 +481,7 @@ void * downloader( void * infos_ ){
 }
 
 
-void * writer( void * infos_ ){
+void * writer( void * infos_ ) {
 
     /* Temporarily block SIGUSR2 signal occurrences. */
     sigset_t    set;
@@ -496,7 +505,20 @@ void * writer( void * infos_ ){
     do {
 
         if (infos -> finish == '1') {
-            printf("\n All file has been written on client's directory.");  fflush(stdout);
+
+            current_timestamp( &end );
+
+            printf("\n ALL FILE HAS BEEN WRITTEN ON CLIENT'S DIRECTORY.");  fflush(stdout);
+
+            printf("\033[01;33m");
+
+            print_elapsed( &start, &end );
+            //printf("\n TIME : %ld ", nanodifftime( &end, &start ) );
+
+            fflush(stdout);
+
+            printf("\033[0m");
+
             break;
         }
 
@@ -637,7 +659,17 @@ void    * work ( void * infos ) {
         pthread_exit( NULL );
     }
 
+    current_timestamp( &end );
+
     printf("\n UPLOAD COMPLETE.");  fflush(stdout);
+
+    printf("\033[01;33m");
+
+    //printf("\n TIME : %ld ", nanodifftime( &end, &start ) );
+
+    print_elapsed( &start, &end );
+
+    printf("\033[0m");
 
     info -> uploading = '0';
 
