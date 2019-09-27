@@ -48,7 +48,7 @@ struct upload_block {
 /*  
     This is a thread function. The Uploader thread is always coupled with a Writer thread. 
     Each Uploader has the responsibility to operate an upload of a file from a remote client. 
-    The Uploader receives data packets and transmit acknowledgements, in order to ensure reliable file transfer.
+    The Uploader receives data packets and transmits acknowledgements, in order to ensure reliable file transfer.
     Each Uploader communicates with its Writer, making him transcribing all packet's data in a persistent file on server's directory. 
     After the Upload is complete, this thread is blocked and waits to be signaled for a following new upload occurrence.
 */
@@ -105,6 +105,9 @@ void    * uploader( void * upload_block ) {
     printf("\n - SIZE : %d", filesize );                                                                fflush(stdout); 
 
     memset( rcv_buffer, 0, MAXLINE);
+
+    /* Extract a seed from current time and set it for the rand function. */
+    srand((unsigned int)time(0));
 
     do{
 

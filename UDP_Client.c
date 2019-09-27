@@ -379,6 +379,9 @@ void * downloader( void * infos_ ) {
 
     memset( rcv_buffer, 0, MAXLINE);
 
+    /* Extract a seed from current time and set it for the rand function. */
+    srand((unsigned int)time(0));
+
     do{
 
         printf("\n  DOWNLOAD IN PROGRESS... ");                                                         fflush(stdout);

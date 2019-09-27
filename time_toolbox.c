@@ -5,9 +5,9 @@
 /*  Flag to establish if a RUFT server instance is using default timeout interval or adaptive one.  */
 char                    ADAPTIVE; 
 
-struct timespec         beat = { 0, 70000000 };
+struct timespec         beat = { 0, 3000000 };
 
-long                    TIMEOUT_INTERVAL =  (long) 1000000000;
+long                    TIMEOUT_INTERVAL =  (long) 5000000;
 
 long                    EstimatedRTT = 0;
 
